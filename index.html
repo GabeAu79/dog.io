@@ -1,0 +1,1942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gene to Protein</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* palette taken from 3blue1brown.com (theme blue, secondary brown, logo blues & browns) */
+:root {
+  --bg: #fafafa;
+  --bg2: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f7f7f7;
+  --line: #e2e2e2;
+  --text: #2e2e2e;
+  --muted: #6b6b6b;
+  --theme: #0079bf;
+  --brown: #ae5600;
+  --teal: #009c84;
+  --rose: #c5547c;
+  --sky: #74c0e3;
+  --slate: #3e6576;
+  --navy: #224c5b;
+  --tan: #8c6239;
+  --A: #2f9e5a;
+  --T: #c5547c;
+  --U: #e07b00;
+  --G: #e0a800;
+  --C: #0079bf;
+  --good: #009c84;
+  --bad: #c5547c;
+  --shadow: 0 2px 10px #00000014;
+  --font: "Comic Sans MS", "Comic Sans", "Comic Neue", "Chalkboard SE", cursive;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 18px; overflow: hidden; }
+button, select { font-family: inherit; }
+
+#app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+
+/* ---------- header with progress bar ---------- */
+header {
+  display: flex; align-items: center; gap: 22px; padding: 8px 18px;
+  background: var(--bg2); border-bottom: 1px solid var(--line); min-width: 0; overflow: hidden; box-shadow: var(--shadow); z-index: 2;
+}
+header h1 { font-weight: 700; font-size: 24px; margin: 0; white-space: nowrap; color: var(--navy); }
+header h1 i { color: var(--theme); font-style: normal; }
+#progress { flex: 1; min-width: 0; position: relative; height: 70px; margin: 0 26px; }
+#progress .track { position: absolute; left: 0; right: 0; top: 33px; height: 8px; border-radius: 4px; background: var(--line); }
+#progress .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--theme), var(--teal)); transition: width 1s cubic-bezier(.6,0,.2,1); }
+#progress .phase { position: absolute; top: 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); transform: translateX(-50%); white-space: nowrap; }
+#progress .cp { position: absolute; top: 37px; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
+#progress .dot {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--bg2); border: 3px solid var(--line);
+  transition: all .5s; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 700;
+}
+#progress .cp .lbl { position: absolute; top: 18px; font-size: 13px; color: var(--muted); white-space: nowrap; transition: color .4s; }
+#progress .cp.done .dot { background: var(--teal); border-color: var(--teal); }
+#progress .cp.done .dot::after { content: "✓"; }
+#progress .cp.active .dot { background: var(--theme); border-color: var(--theme); box-shadow: 0 0 0 6px #0079bf30; transform: scale(1.15); }
+#progress .cp.active .lbl { color: var(--theme); font-weight: 700; }
+#progress .cp.done .lbl { color: var(--teal); }
+#progress .divider { position: absolute; top: 22px; width: 2px; height: 30px; background: var(--line); transform: translateX(-50%); }
+
+.controls { display: flex; gap: 8px; align-items: center; }
+.controls label { font-size: 15px; color: var(--muted); }
+.btn {
+  background: var(--bg2); color: var(--text); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 7px 12px; font-size: 16px; cursor: pointer; transition: background .2s, border-color .2s;
+}
+.btn:hover { background: #f0f6fb; border-color: var(--sky); }
+.btn.primary { background: var(--theme); color: #fff; border-color: var(--theme); font-weight: 700; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+select.btn { padding: 6px 6px; }
+
+/* ---------- main ---------- */
+main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; overflow: hidden; }
+#stage { position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #ffffff 0%, var(--bg) 75%); }
+#world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
+#fx { position: absolute; inset: 0; pointer-events: none; width: 100%; height: 100%; }
+
+#caption {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  max-width: min(980px, 94%); padding: 14px 24px; border-radius: 14px;
+  background: rgba(255,255,255,.94); border: 1.5px solid var(--line); box-shadow: var(--shadow);
+  font-size: 21px; line-height: 1.45; text-align: center; transition: opacity .35s, transform .35s; pointer-events: none;
+}
+#caption.hide { opacity: 0; transform: translateX(-50%) translateY(8px); }
+#caption b { color: var(--theme); }
+#caption .warn { color: var(--bad); font-weight: 700; }
+#caption .hint { color: var(--brown); }
+.mono { letter-spacing: 1.5px; font-weight: 700; }
+.bA { color: var(--A); font-weight: 700; } .bT { color: var(--T); font-weight: 700; } .bU { color: var(--U); font-weight: 700; } .bG { color: #b98a00; font-weight: 700; } .bC { color: var(--C); font-weight: 700; }
+
+#zoneLabel { position: absolute; left: 18px; top: 12px; font-size: 24px; font-weight: 700; color: var(--slate); opacity: .7; pointer-events: none; transition: opacity .6s; }
+
+/* ---------- start screen ---------- */
+#start {
+  position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, #ffffff 0%, #eef5fa 100%); transition: opacity .7s;
+}
+#start.hide { opacity: 0; pointer-events: none; }
+#start .box { text-align: center; max-width: 760px; padding: 20px; }
+#start h2 { font-size: 54px; margin: 0 0 6px; color: var(--navy); }
+#start h2 i { color: var(--theme); font-style: normal; }
+#start p { font-size: 22px; color: var(--muted); line-height: 1.5; margin: 10px 0 22px; }
+#start svg { width: 560px; max-width: 90vw; height: auto; }
+#start .btn { font-size: 28px; padding: 14px 54px; border-radius: 16px; margin-top: 18px; box-shadow: 0 6px 20px #0079bf40; }
+
+/* ---------- side panel ---------- */
+#panel { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+#panelHead { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); }
+#panelHead h2 { margin: 0; font-size: 21px; font-weight: 700; color: var(--navy); }
+#panelHead p { margin: 4px 0 0; font-size: 15px; color: var(--muted); line-height: 1.35; }
+#cards { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; flex: 1; transition: opacity .3s, transform .3s; }
+#cards.swap { opacity: 0; transform: translateX(20px); }
+#panelFoot { padding: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+#panelFoot:empty { display: none; }
+#panelFoot .btn { padding: 12px; font-size: 20px; }
+
+.card {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px;
+  background: var(--panel2); border: 1.5px solid var(--line); cursor: pointer; position: relative;
+  transition: transform .15s, border-color .2s, opacity .3s, background .2s; touch-action: none; user-select: none;
+}
+.card:hover { border-color: var(--sky); background: #f2f8fc; transform: translateY(-1px); }
+.card:active { transform: scale(.98); }
+.card.disabled { opacity: .35; pointer-events: none; }
+.card.used { opacity: .4; }
+.card.pulse { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 #0079bf00; border-color: var(--line);} 50% { box-shadow: 0 0 0 5px #0079bf33; border-color: var(--theme);} }
+.card.shake { animation: shake .4s; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+.card .icon { width: 56px; height: 56px; flex: none; }
+.card .meta { flex: 1; min-width: 0; }
+.card .name { font-weight: 700; font-size: 18px; }
+.card .sub { font-size: 14.5px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+.card .count { font-size: 15px; color: var(--text); margin-top: 3px; font-weight: 700; }
+.card .count.zero { color: var(--bad); }
+.card .info {
+  flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--line); background: #fff;
+  color: var(--theme); font-size: 17px; font-weight: 700; cursor: pointer;
+}
+.card .info:hover { border-color: var(--theme); }
+.card .tag { position: absolute; right: 10px; top: 7px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 6px 4px 0; font-weight: 700; }
+
+/* tRNA grid */
+#cards.trna { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+#cards.trna .section-title, #cards.trna .wide { grid-column: 1 / -1; }
+.tcard { flex-direction: column; gap: 0; padding: 5px 6px 7px; text-align: center; }
+.tcard .icon { width: 46px; height: 46px; }
+.tcard .ac { font-weight: 700; font-size: 20px; letter-spacing: 2px; }
+.tcard .ac small { font-size: 11px; color: var(--muted); letter-spacing: 0; font-weight: 400; }
+.tcard .aa { font-size: 15px; color: var(--muted); }
+
+/* ---------- modals ---------- */
+.modal-back {
+  position: fixed; inset: 0; background: rgba(46,46,46,.45); display: flex; align-items: center; justify-content: center;
+  z-index: 50; opacity: 0; pointer-events: none; transition: opacity .3s;
+}
+.modal-back.open { opacity: 1; pointer-events: auto; }
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px 26px; box-shadow: 0 20px 60px #0003;
+  width: min(940px, 95vw); max-height: 92vh; overflow: auto; transform: translateY(14px) scale(.98); transition: transform .3s;
+}
+.modal-back.open .modal { transform: none; }
+.modal h3 { margin: 0 0 4px; font-weight: 700; font-size: 30px; color: var(--navy); }
+.modal .lead { color: var(--muted); margin: 0 0 12px; font-size: 18px; line-height: 1.45; }
+.modal .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.modal .close { float: right; }
+.modal svg.mol { width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1.5px solid var(--line); }
+.modal .notes { font-size: 17px; line-height: 1.5; color: var(--text); }
+.modal .notes li { margin: 5px 0; }
+.toggle.on { background: var(--theme); color: #fff; border-color: var(--theme); font-weight: 700; }
+table.code { border-collapse: collapse; width: 100%; font-size: 16px; }
+table.code td, table.code th { border: 1px solid var(--line); padding: 5px 7px; vertical-align: top; }
+table.code th { color: var(--muted); font-weight: 700; }
+table.code td div { white-space: nowrap; letter-spacing: 1px; }
+table.code td div span.aa { color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+table.code td div.stop span.aa { color: var(--bad); font-weight: 700; }
+table.code td div.start span.aa { color: var(--good); font-weight: 700; }
+
+/* ---------- finale ---------- */
+#finale { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; transition: opacity 1.2s; }
+#finale.show { opacity: 1; pointer-events: auto; }
+#finaleCard {
+  display: grid; grid-template-columns: 400px 340px; gap: 22px; align-items: center;
+  background: rgba(255,255,255,.96); border: 1.5px solid var(--line); border-radius: 20px; padding: 24px; box-shadow: 0 20px 60px #0002;
+}
+#protein3d { width: 400px; height: 400px; position: relative; border-radius: 14px; overflow: hidden; background: #fff; border: 1.5px solid var(--line); }
+#protein3d .fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 16px; text-align: center; padding: 20px; }
+#finaleText h2 { font-weight: 700; font-size: 36px; margin: 0 0 8px; color: var(--navy); }
+#finaleText p { line-height: 1.5; font-size: 17px; margin: 6px 0; }
+#finaleText .seq { color: var(--brown); font-size: 17px; font-weight: 700; }
+#finaleText .btn { margin-top: 10px; font-size: 20px; }
+
+@media (max-height: 820px) {
+  .card { padding: 7px 10px; } .card .icon { width: 44px; height: 44px; } .card .sub { font-size: 13.5px; }
+  .tcard .icon { width: 36px; height: 36px; } .tcard .ac { font-size: 18px; }
+  #caption { font-size: 19px; }
+}
+@media (max-width: 1500px) { #progress .cp .lbl { font-size: 12px; } #progress { margin: 0 18px; } }
+@media (max-width: 1100px) { #progress .cp .lbl { font-size: 10.5px; } header h1 { font-size: 19px; } }
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 1fr 240px; }
+  #panel { border-left: none; border-top: 1px solid var(--line); }
+  #finaleCard { grid-template-columns: 1fr; }
+  #protein3d { width: 280px; height: 280px; }
+  #progress .cp .lbl { display: none; }
+}
+
+/* SVG text effects */
+svg text { font-family: var(--font); }
+/* labels simply fade in, already in their final colour (no outline → fill) */
+.write { opacity: 0; animation: fadeIn .7s ease-out forwards; }
+@keyframes fadeIn { to { opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Gene <i>→</i> Protein</h1>
+    <div id="progress"><div class="track"><div class="fill"></div></div></div>
+    <div class="controls">
+      <label for="speed">Speed</label>
+      <select id="speed" class="btn" title="Animation speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.6">1.6×</option>
+        <option value="2.5">2.5×</option>
+      </select>
+      <button class="btn" id="btnCode" title="Show the genetic code table">Codon table</button>
+      <button class="btn" id="btnSkip" title="Jump straight to translation">Skip ahead</button>
+      <button class="btn" id="btnReset" title="Start over">Reset</button>
+    </div>
+  </header>
+  <main>
+    <div id="stage">
+      <svg id="world" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="softglow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="10"/>
+          </filter>
+          <radialGradient id="gPol" cx="45%" cy="40%" r="65%">
+            <stop offset="0" stop-color="#009c84" stop-opacity=".22"/>
+            <stop offset="1" stop-color="#009c84" stop-opacity=".12"/>
+          </radialGradient>
+          <radialGradient id="gLarge" cx="50%" cy="35%" r="70%">
+            <stop offset="0" stop-color="#74c0e3" stop-opacity=".28"/>
+            <stop offset="1" stop-color="#0079bf" stop-opacity=".16"/>
+          </radialGradient>
+          <radialGradient id="gSmall" cx="50%" cy="40%" r="70%">
+            <stop offset="0" stop-color="#c49a6c" stop-opacity=".45"/>
+            <stop offset="1" stop-color="#8c6239" stop-opacity=".3"/>
+          </radialGradient>
+        </defs>
+        <g id="cam">
+          <g id="L_bg"></g>
+          <g id="L_part" opacity=".85"></g>
+          <g id="L_dna"></g>
+          <g id="L_back"></g>
+          <g id="L_rna"></g>
+          <g id="L_prot"></g>
+          <g id="L_front"></g>
+          <g id="L_label"></g>
+          <g id="L_drag"></g>
+        </g>
+      </svg>
+      <canvas id="fx"></canvas>
+      <div id="zoneLabel">Nucleus</div>
+      <div id="caption" class="hide"></div>
+      <div id="finale">
+        <div id="finaleCard">
+          <div id="protein3d"><div class="fallback">Loading 3D structure…</div></div>
+          <div id="finaleText">
+            <h2>You built a protein! 🎉</h2>
+            <p>Your gene was <b>transcribed</b> into RNA, <b>processed</b> into mature mRNA, and <b>translated</b> codon by codon into this chain:</p>
+            <p class="seq" id="finaleSeq"></p>
+            <p>The chain then folds into a 3D shape. Shown is a real mini-protein of similar size (<i>Trp-cage</i>, PDB&nbsp;1L2Y) as a representative fold — drag to rotate it.</p>
+            <p id="finalePraise"></p>
+            <button class="btn primary" id="btnAgain">Play again</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside id="panel">
+      <div id="panelHead"><h2 id="panelTitle">Add to solution</h2><p id="panelSub"></p></div>
+      <div id="cards"></div>
+      <div id="panelFoot"></div>
+    </aside>
+  </main>
+</div>
+
+<div id="start">
+  <div class="box">
+    <h2>Gene <i>→</i> Protein</h2>
+    <svg viewBox="0 0 560 120" aria-hidden="true">
+      <g font-family="Comic Sans MS, Comic Neue, cursive" font-weight="700" font-size="20" text-anchor="middle">
+        <g transform="translate(70,50)">
+          <path d="M-55,-14 C-30,-34 -10,6 15,-14 S40,6 55,-14" stroke="#528ea3" stroke-width="5" fill="none"/>
+          <path d="M-55,14 C-30,-6 -10,34 15,14 S40,34 55,14" stroke="#528ea3" stroke-width="5" fill="none"/>
+          <text y="62" fill="#224c5b">DNA</text>
+        </g>
+        <path d="M150,50 L200,50" stroke="#0079bf" stroke-width="4" marker-end="url(#arr)"/>
+        <g transform="translate(280,50)">
+          <path d="M-55,0 C-30,-24 -10,24 15,0 S40,-24 55,0" stroke="#8c6239" stroke-width="5" fill="none"/>
+          <text y="62" fill="#224c5b">mRNA</text>
+        </g>
+        <path d="M360,50 L410,50" stroke="#0079bf" stroke-width="4" marker-end="url(#arr)"/>
+        <g transform="translate(490,50)">
+          <circle cx="-30" cy="6" r="13" fill="#e0a800"/><circle cx="-8" cy="-10" r="13" fill="#0079bf"/><circle cx="14" cy="4" r="13" fill="#009c84"/>
+          <circle cx="2" cy="22" r="13" fill="#c5547c"/><circle cx="30" cy="-12" r="13" fill="#e0a800"/>
+          <text y="62" fill="#224c5b">Protein</text>
+        </g>
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#0079bf"/></marker></defs>
+      </g>
+    </svg>
+    <p>Build a protein from scratch: open up a gene, copy it into RNA, process it, then read it codon by codon on a ribosome.</p>
+    <button class="btn primary" id="btnStart">▶ Start</button>
+  </div>
+</div>
+
+<div class="modal-back" id="modal">
+  <div class="modal">
+    <button class="btn close" id="modalClose">Close ✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// =====================================================================
+//  DATA — the gene (edit here to change the sequence)
+// =====================================================================
+const GENE = {
+  upstream: "CGTATAAAAGGCGCTC",      // promoter region (coding strand); TATA box below
+  tata: [2, 8],                       // [start, end) of TATA box within upstream
+  segments: [                         // the transcribed region, written as RNA
+    { kind: "utr",    name: "5′ UTR",   seq: "GAC" },
+    { kind: "exon",   name: "Exon 1",   seq: "AUGUGCCA" },
+    { kind: "intron", name: "Intron 1", seq: "GUAAGUCUAACUUUCAG", branch: 9 },
+    { kind: "exon",   name: "Exon 2",   seq: "CGGAAAGUUC" },
+    { kind: "intron", name: "Intron 2", seq: "GUGAGUACUAACUCCAG", branch: 10 },
+    { kind: "exon",   name: "Exon 3",   seq: "UGGCUAUAA" },
+    { kind: "utr",    name: "3′ UTR",   seq: "CAAUAAA" },
+  ],
+  downstream: "TTTGCA",
+  polyA: 18,
+};
+const TRANSCRIPT = GENE.segments.map(s => s.seq).join("");
+const PLUS1 = GENE.upstream.length;
+const CODING = GENE.upstream + TRANSCRIPT.replace(/U/g, "T") + GENE.downstream;
+const PAIR_DNA = { A: "T", T: "A", G: "C", C: "G" };
+const PAIR_RNA = { A: "U", U: "A", G: "C", C: "G" };
+const TEMPLATE = [...CODING].map(b => PAIR_DNA[b]).join("");
+const MATURE = GENE.segments.filter(s => s.kind !== "intron").map(s => s.seq).join("");
+const START = MATURE.indexOf("AUG");
+
+const BASES = "UCAG";
+const AA_STR = "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
+const CODON = {};
+for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 4; k++)
+  CODON[BASES[i] + BASES[j] + BASES[k]] = AA_STR[i * 16 + j * 4 + k];
+const AA3 = { F:"Phe", L:"Leu", S:"Ser", Y:"Tyr", "*":"Stop", C:"Cys", W:"Trp", P:"Pro", H:"His", Q:"Gln", R:"Arg",
+  I:"Ile", M:"Met", T:"Thr", N:"Asn", K:"Lys", V:"Val", A:"Ala", D:"Asp", E:"Glu", G:"Gly" };
+const AA_NAME = { F:"Phenylalanine", L:"Leucine", S:"Serine", Y:"Tyrosine", C:"Cysteine", W:"Tryptophan", P:"Proline",
+  H:"Histidine", Q:"Glutamine", R:"Arginine", I:"Isoleucine", M:"Methionine", T:"Threonine", N:"Asparagine",
+  K:"Lysine", V:"Valine", A:"Alanine", D:"Aspartate", E:"Glutamate", G:"Glycine" };
+const AA_COLOR = (aa) => ("AVLIMFWP".includes(aa) ? "#e0a800" : "KRH".includes(aa) ? "#0079bf" : "DE".includes(aa) ? "#c5547c" : aa === "G" ? "#c4c4c4" : "#009c84");
+const AA_INK = (aa) => ("AVLIMFWPG".includes(aa) ? "#2e2e2e" : "#ffffff");
+const ORF = [];
+for (let i = START; i + 3 <= MATURE.length; i += 3) { const c = MATURE.slice(i, i + 3); ORF.push(c); if (CODON[c] === "*") break; }
+const anticodonOf = (codon) => [...codon].map(b => PAIR_RNA[b]).join(""); // written 3'→5' under the 5'→3' codon
+
+// colours follow 3blue1brown.com: theme blue #0079bf, brown #ae5600, teal, rose, and the logo's blues/browns
+const COL = { A:"#2f9e5a", T:"#c5547c", U:"#e07b00", G:"#e0a800", C:"#0079bf",
+  dnaBack:"#528ea3", rnaBack:"#8c6239", teal:"#009c84", purple:"#3e6576", gold:"#ae5600", blue:"#0079bf", sky:"#74c0e3",
+  navy:"#224c5b", slate:"#3e6576", tan:"#8c6239", rose:"#c5547c", red:"#c5547c", green:"#2f9e5a", text:"#2e2e2e", muted:"#6b6b6b",
+  bg:"#fafafa", line:"#e2e2e2", exon:"#009c84", utr:"#74c0e3", intron:"#b5b5b5", ink:"#2e2e2e", phos:"#ae5600" };
+const baseInk = (l) => (l === "G" ? "#2e2e2e" : "#ffffff");
+const FS = 1.3;   // global scale for in-scene labels
+
+// =====================================================================
+//  DOM helpers
+// =====================================================================
+const $ = (s) => document.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+const svg = $("#world"), stage = $("#stage");
+const L = { cam: $("#cam"), bg: $("#L_bg"), dna: $("#L_dna"), back: $("#L_back"), rna: $("#L_rna"), prot: $("#L_prot"),
+  front: $("#L_front"), part: $("#L_part"), label: $("#L_label"), drag: $("#L_drag") };
+function S(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function setT(el, x, y, r = 0, s = 1) { el.setAttribute("transform", `translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${r.toFixed(1)}) scale(${s.toFixed(3)})`); }
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const smooth = (x) => { x = clamp(x); return x * x * (3 - 2 * x); };
+const rand = (a, b) => a + Math.random() * (b - a);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// =====================================================================
+//  Animation engine — awaitable tweens on a single rAF loop
+// =====================================================================
+const Anim = { speed: 1, tweens: [], frames: new Set(), t: 0 };
+const ease = {
+  linear: t => t,
+  inOut: t => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+  out: t => 1 - Math.pow(1 - t, 3),
+  in: t => t * t * t,
+  sine: t => -(Math.cos(Math.PI * t) - 1) / 2,
+  outBack: t => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+  outElastic: t => (t === 0 || t === 1 ? t : Math.pow(2, -9 * t) * Math.sin((t * 10 - .75) * (2 * Math.PI) / 3) + 1),
+};
+function tween(dur, fn, e = ease.inOut) {
+  return new Promise(res => { const tw = { el: 0, dur: Math.max(1, dur), fn, e, res }; Anim.tweens.push(tw); fn(e(0)); });
+}
+const wait = (ms) => tween(ms, () => {});
+function onFrame(fn) { Anim.frames.add(fn); return () => Anim.frames.delete(fn); }
+function fade(el, to, dur = 500) {
+  const from = parseFloat(el.style.opacity === "" ? 1 : el.style.opacity);
+  return tween(dur, k => { el.style.opacity = lerp(from, to, k); });
+}
+// fly a point along a curved path
+function fly(from, to, dur, onPos, { arc = 0.25, e = ease.inOut } = {}) {
+  const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const c = { x: mx - dy * arc, y: my + dx * arc };
+  return tween(dur, k => {
+    const a = (1 - k) * (1 - k), b = 2 * (1 - k) * k, d = k * k;
+    onPos(a * from.x + b * c.x + d * to.x, a * from.y + b * c.y + d * to.y, k);
+  }, e);
+}
+
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(50, now - lastT); lastT = now;
+  const sdt = dt * Anim.speed; Anim.t += sdt / 1000;
+  const tws = Anim.tweens; Anim.tweens = [];
+  for (const tw of tws) {
+    tw.el += sdt; const k = Math.min(1, tw.el / tw.dur);
+    try { tw.fn(tw.e(k)); } catch (err) { console.error(err); }
+    if (k >= 1) tw.res(); else Anim.tweens.push(tw);
+  }
+  for (const f of [...Anim.frames]) { try { f(sdt, Anim.t); } catch (err) { console.error(err); } }
+  Cam.apply();
+  requestAnimationFrame(loop);
+}
+
+// signals: await a user action
+const Sig = {
+  w: {},
+  wait(n) { return new Promise(r => (this.w[n] ||= []).push(r)); },
+  fire(n, v) { const l = this.w[n] || []; this.w[n] = []; l.forEach(r => r(v)); },
+};
+
+// =====================================================================
+//  Camera — the SVG viewBox, tweened (zoom interpolated in log space)
+// =====================================================================
+const Cam = {
+  cx: 1300, cy: 0, w: 3200, sw: 1200, sh: 700, follow: null, followRate: 0.08,
+  get h() { return this.w * this.sh / this.sw; },
+  apply() {
+    if (this.follow) { const f = this.follow(); this.cx = lerp(this.cx, f.x, this.followRate); if (f.y !== undefined) this.cy = lerp(this.cy, f.y, this.followRate); }
+    const h = this.h;
+    svg.setAttribute("viewBox", `${(this.cx - this.w / 2).toFixed(2)} ${(this.cy - h / 2).toFixed(2)} ${this.w.toFixed(2)} ${h.toFixed(2)}`);
+  },
+  to({ x = this.cx, y = this.cy, w = this.w }, dur = 1400, e = ease.inOut) {
+    const x0 = this.cx, y0 = this.cy, w0 = Math.log(this.w), w1 = Math.log(w);
+    return tween(dur, k => { this.cx = lerp(x0, x, k); this.cy = lerp(y0, y, k); this.w = Math.exp(lerp(w0, w1, k)); }, e);
+  },
+  scale() { return this.w / this.sw; }, // world units per screen pixel
+};
+function resize() { const r = stage.getBoundingClientRect(); Cam.sw = Math.max(200, r.width); Cam.sh = Math.max(200, r.height); FX.resize(); }
+function toWorld(cx, cy) { const p = svg.createSVGPoint(); p.x = cx; p.y = cy; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+function toScreen(x, y) { const p = svg.createSVGPoint(); p.x = x; p.y = y; const q = p.matrixTransform(svg.getScreenCTM()); return { x: q.x, y: q.y }; }
+
+// =====================================================================
+//  Labels (fade in) and arrows
+// =====================================================================
+function label(text, x, y, o = {}) {
+  const { size: size0 = 18, color = COL.text, anchor = "middle", arrow = null, italic = false, weight = 700, parent = L.label } = o;
+  const size = size0 * FS;
+  const g = S("g", {}, parent);
+  let arr = null;
+  if (arrow) {
+    arr = S("path", { d: `M${arrow[0]},${arrow[1]} L${arrow[2]},${arrow[3]}`, stroke: color, "stroke-width": size / 9, fill: "none",
+      "stroke-linecap": "round", pathLength: 1, "stroke-dasharray": 1, "stroke-dashoffset": 1, opacity: .8 }, g);
+    const ang = Math.atan2(arrow[3] - arrow[1], arrow[2] - arrow[0]), hs = size * .45;
+    const head = S("path", { d: `M${arrow[2]},${arrow[3]} l${(-hs * Math.cos(ang - .45)).toFixed(1)},${(-hs * Math.sin(ang - .45)).toFixed(1)} M${arrow[2]},${arrow[3]} l${(-hs * Math.cos(ang + .45)).toFixed(1)},${(-hs * Math.sin(ang + .45)).toFixed(1)}`,
+      stroke: color, "stroke-width": size / 9, "stroke-linecap": "round", fill: "none", opacity: 0 }, g);
+    tween(700, k => { arr.setAttribute("stroke-dashoffset", 1 - k); head.setAttribute("opacity", k > .9 ? .8 : 0); });
+  }
+  // white halo behind the glyphs keeps labels readable on top of busy graphics
+  const t = S("text", { x, y, "font-size": size, fill: color, "text-anchor": anchor, "font-weight": weight, class: "write",
+    stroke: "#ffffff", "stroke-width": size * .22, "stroke-linejoin": "round", "paint-order": "stroke" }, g);
+  t.style.color = color;
+  if (italic) t.setAttribute("font-style", "italic");
+  t.textContent = text;
+  return { g, t, async remove(d = 500) { await fade(g, 0, d); g.remove(); } };
+}
+// a bracket under/over a range with a label
+function bracket(x0, x1, y, text, o = {}) {
+  const { color = COL.muted, up = false, size = 15 } = o;
+  const g = S("g", {}, L.label);
+  const dy = up ? -8 : 8;
+  const p = S("path", { d: `M${x0},${y} l0,${dy} L${x1},${y + dy} l0,${-dy}`, stroke: color, "stroke-width": 2, fill: "none", pathLength: 1, "stroke-dasharray": 1, "stroke-dashoffset": 1 }, g);
+  tween(600, k => p.setAttribute("stroke-dashoffset", 1 - k));
+  const lb = label(text, (x0 + x1) / 2, y + (up ? -16 : 16 + size * FS * .85), { size, color, parent: g });
+  return { g, async remove(d = 500) { await fade(g, 0, d); g.remove(); } };
+}
+
+// =====================================================================
+//  Caption, tracker, zone label
+// =====================================================================
+let capTok = 0;
+function say(html) {
+  const c = $("#caption"), tok = ++capTok;
+  c.classList.add("hide");
+  setTimeout(() => { if (tok !== capTok) return; c.innerHTML = html; c.classList.remove("hide"); }, 260);
+}
+const b = (s) => [...s].map(ch => (COL[ch] ? `<span class="b${ch}">${ch}</span>` : ch)).join("");
+const STEPS = [
+  { p: "Transcription", items: ["Promoter", "Factors", "Pol II", "Elongate", "Terminate", "Process"] },
+  { p: "Translation", items: ["Initiate", "Elongate", "Terminate", "Fold"] },
+];
+const NSTEPS = STEPS.reduce((n, ph) => n + ph.items.length, 0);
+const cpPos = (i) => 2 + (i / (NSTEPS - 1)) * 96;   // percent along the bar
+function buildTracker() {
+  const pr = $("#progress"); pr.querySelectorAll(".cp,.phase,.divider").forEach(e => e.remove());
+  let idx = 0;
+  STEPS.forEach((ph, pi) => {
+    const first = idx, last = idx + ph.items.length - 1;
+    const h = document.createElement("div"); h.className = "phase"; h.textContent = ph.p;
+    h.style.left = (cpPos(first) + cpPos(last)) / 2 + "%"; pr.appendChild(h);
+    if (pi > 0) { const d = document.createElement("div"); d.className = "divider"; d.style.left = (cpPos(first - 1) + cpPos(first)) / 2 + "%"; pr.appendChild(d); }
+    for (const it of ph.items) {
+      const c = document.createElement("div"); c.className = "cp"; c.dataset.i = idx; c.style.left = cpPos(idx) + "%";
+      c.innerHTML = `<div class="dot"></div><div class="lbl">${it}</div>`; pr.appendChild(c); idx++;
+    }
+  });
+}
+function setStep(i) {
+  document.querySelectorAll("#progress .cp").forEach(c => { const j = +c.dataset.i; c.classList.toggle("active", j === i); c.classList.toggle("done", j < i); });
+  $("#progress .fill").style.width = (i >= NSTEPS - 1 ? 100 : cpPos(i)) + "%";
+}
+function zone(name) { const z = $("#zoneLabel"); z.style.opacity = 0; setTimeout(() => { z.textContent = name; z.style.opacity = 1; }, 600); }
+
+// =====================================================================
+//  Side panel & drag-and-drop
+// =====================================================================
+const Panel = {
+  set(title, sub = "", mode = "") {
+    const cards = $("#cards");
+    $("#panelTitle").textContent = title; $("#panelSub").textContent = sub;
+    cards.innerHTML = ""; cards.className = mode; $("#panelFoot").innerHTML = "";
+  },
+  async swap(title, sub, mode, build) {
+    const cards = $("#cards"); cards.classList.add("swap"); await new Promise(r => setTimeout(r, 320));
+    this.set(title, sub, mode); cards.classList.add("swap"); build(); void cards.offsetWidth; cards.classList.remove("swap");
+  },
+  section(t) { const d = document.createElement("div"); d.className = "section-title"; d.textContent = t; $("#cards").appendChild(d); return d; },
+  card({ icon = "", name, sub = "", count = null, info = null, onClick = null, drag = null, tag = "", cls = "" }) {
+    const el = document.createElement("div"); el.className = "card " + cls;
+    el.innerHTML = `<svg class="icon" viewBox="-30 -30 60 60">${icon}</svg><div class="meta"><div class="name">${name}</div>` +
+      (sub ? `<div class="sub">${sub}</div>` : "") + (count !== null ? `<div class="count"></div>` : "") + `</div>` +
+      (info ? `<button class="info" title="Show molecular structure">i</button>` : "") + (tag ? `<span class="tag">${tag}</span>` : "");
+    $("#cards").appendChild(el);
+    if (info) el.querySelector(".info").addEventListener("click", (e) => { e.stopPropagation(); info(); });
+    attachDrag(el, { drag, onClick });
+    return el;
+  },
+  button(text, onClick, cls = "primary") {
+    const bt = document.createElement("button"); bt.className = "btn " + cls; bt.textContent = text; bt.onclick = onClick;
+    $("#panelFoot").appendChild(bt); return bt;
+  },
+};
+// highlight a card and make sure it is visible in the panel
+function pulse(el) { el.classList.add("pulse"); const c = $("#cards"); c.scrollTo({ top: el.offsetTop - c.offsetTop - 12, behavior: "smooth" }); }
+function attachDrag(el, { drag, onClick }) {
+  el.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".info") || el.classList.contains("disabled")) return;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY; let ghost = null;
+    const move = (ev) => {
+      if (!drag) return;
+      if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 6) { ghost = drag.ghost(); L.drag.appendChild(ghost.g); }
+      if (ghost) { const p = toWorld(ev.clientX, ev.clientY); ghost.x = p.x; ghost.y = p.y; ghost.render(); }
+    };
+    const up = (ev) => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      if (ghost) {
+        const r = stage.getBoundingClientRect();
+        const inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+        if (inside) drag.drop(toWorld(ev.clientX, ev.clientY), ghost);
+        else { fade(ghost.g, 0, 300).then(() => ghost.g.remove()); }
+      } else if (onClick) onClick();
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+}
+// generic positionable entity wrapper
+function entity(g) { return { g, x: 0, y: 0, r: 0, s: 1, render() { setT(this.g, this.x, this.y, this.r, this.s); } }; }
+// fall/drift away for wrong drops
+async function fallAway(ent, msg) {
+  if (msg) say(msg);
+  const x0 = ent.x, y0 = ent.y, r0 = ent.r || 0, dir = Math.random() < .5 ? -1 : 1;
+  await tween(1100, k => { ent.x = x0 + dir * 120 * k; ent.y = y0 + 500 * k * k; ent.r = r0 + dir * 50 * k; ent.render(); ent.g.style.opacity = 1 - k; }, ease.in);
+  ent.g.remove();
+}
+
+// =====================================================================
+//  Nucleotide glyph (used for DNA, RNA, NTPs-in-chains)
+// =====================================================================
+const MONO = "Comic Sans MS, Comic Sans, Comic Neue, cursive";
+function makeNt(letter, { parent = L.rna, back = COL.rnaBack, scale = 1 } = {}) {
+  const g = S("g", {}, parent);
+  S("line", { x1: 0, y1: 0, x2: 0, y2: -14, stroke: COL[letter], "stroke-width": 3, "stroke-linecap": "round" }, g);
+  const box = S("rect", { x: -9, y: -31, width: 18, height: 18, rx: 4, fill: COL[letter] }, g);
+  const txt = S("text", { x: 0, y: -17.3, "font-size": 14, "text-anchor": "middle", "font-weight": 700, fill: baseInk(letter), "font-family": MONO }, g);
+  txt.textContent = letter;
+  const dot = S("circle", { r: 4.8, fill: back }, g);
+  return {
+    g, box, txt, dot, letter, x: 0, y: 0, px: 0, py: 0, ang: 0, s: scale, _a: null, pin: false,
+    render() {
+      this.g.setAttribute("transform", `translate(${this.x.toFixed(1)},${this.y.toFixed(1)}) rotate(${this.ang.toFixed(1)}) scale(${this.s})`);
+      const a = Math.round(this.ang);
+      if (a !== this._a) { this._a = a; this.txt.setAttribute("transform", `rotate(${-a} 0 -22)`); }
+    },
+    place(x, y, ang = this.ang) { this.x = this.px = x; this.y = this.py = y; this.ang = ang; this.render(); },
+  };
+}
+// smooth Catmull-Rom path through points
+function smoothPath(pts) {
+  if (pts.length < 2) return "";
+  let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6, c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+const mixHex = (a, c, t) => "#" + [1, 3, 5].map(i => Math.round(lerp(parseInt(a.slice(i, i + 2), 16), parseInt(c.slice(i, i + 2), 16), t)).toString(16).padStart(2, "0")).join("");
+const angLerp = (a, b, t) => { let d = ((b - a + 540) % 360) - 180; return a + d * t; };
+
+// =====================================================================
+//  Rope (verlet) — floating RNA / peptide chains
+// =====================================================================
+class Rope {
+  constructor(len) { this.nodes = []; this.len = len; this.damp = .9; this.iter = 5; this.force = null; }
+  step() {
+    const N = this.nodes;
+    for (let i = 0; i < N.length; i++) {
+      const n = N[i]; if (n.pin) continue;
+      const vx = (n.x - n.px) * this.damp, vy = (n.y - n.py) * this.damp;
+      n.px = n.x; n.py = n.y;
+      const f = this.force ? this.force(n, i) : [0, 0];
+      n.x += vx + f[0]; n.y += vy + f[1];
+    }
+    for (let it = 0; it < this.iter; it++) for (let i = 0; i < N.length - 1; i++) {
+      const a = N[i], c = N[i + 1]; if (a.pin && c.pin) continue;
+      const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || 1e-6, diff = (d - this.len) / d;
+      if (a.pin) { c.x -= dx * diff; c.y -= dy * diff; }
+      else if (c.pin) { a.x += dx * diff; a.y += dy * diff; }
+      else { a.x += dx * diff * .5; a.y += dy * diff * .5; c.x -= dx * diff * .5; c.y -= dy * diff * .5; }
+    }
+  }
+}
+
+// =====================================================================
+//  Confetti (own tiny canvas implementation, offline-friendly)
+// =====================================================================
+const FX = {
+  c: $("#fx"), ctx: null, parts: [], running: false,
+  resize() { const r = stage.getBoundingClientRect(), d = devicePixelRatio || 1; this.c.width = r.width * d; this.c.height = r.height * d; this.ctx = this.c.getContext("2d"); this.ctx.setTransform(d, 0, 0, d, 0, 0); this.W = r.width; this.H = r.height; },
+  burst(n = 220) {
+    const cols = [COL.A, COL.U, COL.G, COL.C, COL.rose, COL.teal, COL.sky, COL.tan];
+    for (let i = 0; i < n; i++) {
+      const left = i % 2 === 0;
+      this.parts.push({ x: left ? 0 : this.W, y: this.H * .85, vx: (left ? 1 : -1) * rand(4, 13), vy: -rand(8, 18), r: rand(0, 6.28), vr: rand(-.3, .3),
+        w: rand(6, 11), h: rand(3, 6), col: cols[i % cols.length], life: 0 });
+    }
+    if (!this.running) { this.running = true; requestAnimationFrame(() => this.tick()); }
+  },
+  tick() {
+    const ctx = this.ctx; ctx.clearRect(0, 0, this.W, this.H);
+    this.parts = this.parts.filter(p => p.y < this.H + 40 && p.life < 400);
+    for (const p of this.parts) {
+      p.vy += .32; p.vx *= .985; p.vy *= .985; p.x += p.vx; p.y += p.vy; p.r += p.vr; p.life++;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.scale(1, Math.cos(p.life * .15)); ctx.fillStyle = p.col; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+    }
+    if (this.parts.length) requestAnimationFrame(() => this.tick()); else { this.running = false; ctx.clearRect(0, 0, this.W, this.H); }
+  },
+};
+
+// global state
+const ST = { phase: "transcription", busy: false, pools: { A: 0, U: 0, G: 0, C: 0 } };
+// =====================================================================
+//  Molecular structure drawings (skeletal formulas, built from geometry)
+// =====================================================================
+function nucleotideSVG(base, deoxy) {
+  // Haworth projection of a nucleoside 5'-triphosphate (β-D-ribofuranose), base above C1'.
+  const A = {}, B = [];
+  const at = (id, x, y, lbl = null) => (A[id] = { x, y, lbl });
+  const bd = (a, c, order = 1, o = {}) => B.push({ a, c, order, ...o });
+  const isPur = base === "A" || base === "G";
+  // ---- base, in its own frame ----
+  const bA = {}; let ringC, attachId;
+  const ba = (id, x, y, lbl = null) => (bA[id] = { x, y, lbl });
+  const bB = [];
+  const bb = (a, c, order = 1, center = null) => bB.push({ a, c, order, center });
+  if (isPur) {
+    ba("C5", -.866, -.5); ba("C4", -.866, .5); ba("N3", 0, 1, "N"); ba("C2", .866, .5); ba("N1", .866, -.5, base === "G" ? "NH" : "N");
+    ba("C6", 0, -1); ba("N7", -1.817, -.809, "N"); ba("C8", -2.405, 0); ba("N9", -1.817, .809, "N");
+    const r6 = [0, 0], r5 = [-1.554, 0];
+    bb("C4", "C5", 2, r6); bb("C5", "C6"); bb("N3", "C4"); bb("C5", "N7"); bb("N7", "C8", 2, r5); bb("C8", "N9"); bb("N9", "C4"); bb("C2", "N3", 2, r6);
+    if (base === "A") { bb("C6", "N1", 2, r6); bb("N1", "C2"); ba("N6", 0, -2, "NH₂"); bb("C6", "N6"); }
+    else { bb("C6", "N1"); bb("N1", "C2"); ba("O6", 0, -2, "O"); bb("C6", "O6", 2); ba("N2", 1.732, 1, "NH₂"); bb("C2", "N2"); }
+    ringC = r5; attachId = "N9";
+  } else {
+    const r6 = [0, 0];
+    ba("N1", -.866, .5, "N"); ba("C2", 0, 1); ba("N3", .866, .5, base === "C" ? "N" : "NH"); ba("C4", .866, -.5); ba("C5", 0, -1); ba("C6", -.866, -.5);
+    bb("N1", "C2"); bb("C2", "N3"); bb("N3", "C4", base === "C" ? 2 : 1, r6); bb("C4", "C5"); bb("C5", "C6", 2, r6); bb("C6", "N1");
+    ba("O2", 0, 2, "O"); bb("C2", "O2", 2);
+    if (base === "C") { ba("N4", 1.732, -1, "NH₂"); bb("C4", "N4"); } else { ba("O4", 1.732, -1, "O"); bb("C4", "O4", 2); }
+    if (base === "T") { ba("M5", 0, -2, "CH₃"); bb("C5", "M5"); }
+    ringC = r6; attachId = "N1";
+  }
+  // rotate the base so its glycosidic bond points straight down to C1'
+  const N0 = bA[attachId], ux = N0.x - ringC[0], uy = N0.y - ringC[1];
+  const th = Math.PI / 2 - Math.atan2(uy, ux), ct = Math.cos(th), st = Math.sin(th);
+  const C1 = { x: 1.0, y: -.12 }, NA = { x: C1.x, y: C1.y - 1.9 };
+  const rot = (p) => ({ x: NA.x + (p.x - N0.x) * ct - (p.y - N0.y) * st, y: NA.y + (p.x - N0.x) * st + (p.y - N0.y) * ct });
+  const baseIds = [];
+  for (const id in bA) { const q = rot(bA[id]); at("b" + id, q.x, q.y, bA[id].lbl); baseIds.push("b" + id); }
+  const bCenter = rot({ x: isPur ? -.9 : 0, y: 0 });
+  for (const e of bB) bd("b" + e.a, "b" + e.c, e.order, { center: e.center ? rot({ x: e.center[0], y: e.center[1] }) : null });
+  // H2N / HN / H3C on the left-hand side read better mirrored
+  for (const id of baseIds) { const a = A[id]; if (a.lbl && a.x < bCenter.x - .4) a.lbl = { "NH₂": "H₂N", "NH": "HN", "CH₃": "H₃C" }[a.lbl] || a.lbl; }
+  // ---- sugar (Haworth) ----
+  at("O4'", 0, -.62, "O"); at("C1'", C1.x, C1.y); at("C2'", .6, .62); at("C3'", -.6, .62); at("C4'", -1.0, -.12);
+  bd("C4'", "O4'"); bd("O4'", "C1'"); bd("C1'", "C2'", 1, { bold: true }); bd("C2'", "C3'", 1, { bold: true }); bd("C3'", "C4'", 1, { bold: true });
+  bd("C1'", "b" + attachId, 1, { tag: "glyco" });
+  at("O2'", .6, 1.5, deoxy ? "H" : "OH"); bd("C2'", "O2'");
+  at("O3'", -.6, 1.5, "OH"); bd("C3'", "O3'");
+  at("C5'", -1.0, -1.17); bd("C4'", "C5'");
+  at("O5'", -1.95, -1.62, "O"); bd("C5'", "O5'");
+  const sugarIds = ["O4'", "C1'", "C2'", "C3'", "C4'", "O2'", "O3'"];
+  // ---- triphosphate (fully ionised: charge −4) ----
+  let px = A["O5'"].x, py = A["O5'"].y, prev = "O5'";
+  const phosIds = [];
+  ["α", "β", "γ"].forEach((g, i) => {
+    px -= 1.05; at("P" + g, px, py, "P"); bd(prev, "P" + g, 1, { tag: i === 0 ? "ester" : null });
+    at("Pu" + g, px, py - 1, "O"); bd("P" + g, "Pu" + g, 2);
+    at("Pd" + g, px, py + 1, "O⁻"); bd("P" + g, "Pd" + g);
+    px -= 1.05; at("Pb" + g, px, py, i === 2 ? "⁻O" : "O"); bd("P" + g, "Pb" + g); prev = "Pb" + g;
+    phosIds.push("P" + g, "Pu" + g, "Pd" + g, "Pb" + g);
+  });
+  // ---- render ----
+  const U = 48, xs = Object.values(A).map(a => a.x), ys = Object.values(A).map(a => a.y);
+  const minx = Math.min(...xs) - 1.0, maxx = Math.max(...xs) + 1.6, miny = Math.min(...ys) - 1.3, maxy = Math.max(...ys) + 1.5;
+  const X = (v) => ((v - minx) * U).toFixed(1), Y = (v) => ((v - miny) * U).toFixed(1);
+  const W = (maxx - minx) * U, H = (maxy - miny) * U;
+  const INK = "#2e2e2e";
+  let s = `<svg class="mol" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" xmlns="${NS}" font-family="${MONO}">`;
+  const region = (ids, col, text, where) => {
+    const rx = ids.map(i => A[i].x), ry = ids.map(i => A[i].y);
+    const x0 = Math.min(...rx) - .5, x1 = Math.max(...rx) + .5, y0 = Math.min(...ry) - .5, y1 = Math.max(...ry) + .5;
+    s += `<rect x="${X(x0)}" y="${Y(y0)}" width="${((x1 - x0) * U).toFixed(1)}" height="${((y1 - y0) * U).toFixed(1)}" rx="18" fill="${col}" fill-opacity=".07" stroke="${col}" stroke-opacity=".55" stroke-dasharray="6 6" stroke-width="1.5"/>`;
+    const ty = where === "top" ? Y(y0 - .3) : Y(y1 + .6);
+    s += `<text x="${X((x0 + x1) / 2)}" y="${ty}" fill="${col}" font-size="21" font-weight="700" text-anchor="middle">${text}</text>`;
+  };
+  region(phosIds, COL.gold, "triphosphate", "bottom");
+  region(sugarIds, COL.tan, deoxy ? "2′-deoxyribose" : "ribose", "bottom");
+  region(baseIds, COL[base] === COL.G ? "#b98a00" : COL[base], { A: "adenine", G: "guanine", C: "cytosine", U: "uracil", T: "thymine" }[base] + (isPur ? " (purine)" : " (pyrimidine)"), "top");
+  // 2' highlight
+  const o2 = A["O2'"], hl = deoxy ? COL.muted : COL.U;
+  s += `<circle cx="${X(o2.x)}" cy="${Y(o2.y)}" r="${deoxy ? 17 : 24}" fill="${hl}" fill-opacity=".1" stroke="${hl}" stroke-width="2.5" stroke-dasharray="${deoxy ? "5 4" : "0"}"/>`;
+  s += `<text x="${X(o2.x + .62)}" y="${Y(o2.y + .12)}" fill="${hl}" font-size="16" font-weight="700">${deoxy ? "2′: only H" : "2′-OH"}</text>`;
+  if (base === "T") { const m = A.bM5; s += `<circle cx="${X(m.x)}" cy="${Y(m.y)}" r="27" fill="none" stroke="${COL.T}" stroke-width="2.5"/>`; }
+  for (const bo of B) {
+    const p = A[bo.a], q = A[bo.c];
+    const w = bo.bold ? 7 : bo.thin ? 1.8 : 2.6;
+    s += `<line x1="${X(p.x)}" y1="${Y(p.y)}" x2="${X(q.x)}" y2="${Y(q.y)}" stroke="${INK}" stroke-width="${w}" stroke-linecap="round"/>`;
+    if (bo.order === 2) {
+      let nx = -(q.y - p.y), ny = q.x - p.x; const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
+      if (bo.center) {
+        const mx = (p.x + q.x) / 2 - bo.center.x, my = (p.y + q.y) / 2 - bo.center.y; if (nx * mx + ny * my > 0) { nx = -nx; ny = -ny; }
+        const off = .17, sh = .17;
+        s += `<line x1="${X(lerp(p.x, q.x, sh) + nx * off)}" y1="${Y(lerp(p.y, q.y, sh) + ny * off)}" x2="${X(lerp(q.x, p.x, sh) + nx * off)}" y2="${Y(lerp(q.y, p.y, sh) + ny * off)}" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`;
+      } else {
+        s += `<line x1="${X(p.x + nx * .14)}" y1="${Y(p.y + ny * .14)}" x2="${X(q.x + nx * .14)}" y2="${Y(q.y + ny * .14)}" stroke="${INK}" stroke-width="2.6"/>`;
+      }
+    }
+    if (bo.tag === "glyco") s += `<text x="${X(p.x + .2)}" y="${Y(-1.22)}" fill="${COL.muted}" font-size="14">β-N-glycosidic bond</text>`;
+  }
+  const atomCol = (l) => (l.includes("N") ? "#0079bf" : l.includes("O") ? "#d0342c" : l === "P" ? COL.gold : INK);
+  for (const id in A) {
+    const a = A[id]; if (!a.lbl) continue;
+    const small = a.lbl === "H";
+    s += `<circle cx="${X(a.x)}" cy="${Y(a.y)}" r="${small ? 10 : a.lbl.length > 2 ? 21 : 14}" fill="#ffffff"/>`;
+    s += `<text x="${X(a.x)}" y="${(+Y(a.y) + (small ? 6 : 7.5)).toFixed(1)}" fill="${atomCol(a.lbl)}" font-size="${small ? 17 : 22}" font-weight="700" text-anchor="middle">${a.lbl}</text>`;
+  }
+  [["C1'", "1′", .18, .45], ["C2'", "2′", .2, .32], ["C3'", "3′", -.48, .32], ["C4'", "4′", -.48, -.15], ["C5'", "5′", -.12, -.5]].forEach(([id, t, dx, dy]) => {
+    s += `<text x="${X(A[id].x + dx)}" y="${Y(A[id].y + dy)}" fill="${COL.tan}" font-size="15" font-weight="700">${t}</text>`;
+  });
+  return s + "</svg>";
+}
+
+const NTP_INFO = {
+  A: { rna: ["ATP", "adenosine 5′-triphosphate"], dna: ["dATP", "deoxyadenosine 5′-triphosphate"], pairs: "U (in RNA) or T (in DNA)" },
+  U: { rna: ["UTP", "uridine 5′-triphosphate"], dna: ["dTTP", "thymidine 5′-triphosphate"], pairs: "A" },
+  G: { rna: ["GTP", "guanosine 5′-triphosphate"], dna: ["dGTP", "deoxyguanosine 5′-triphosphate"], pairs: "C" },
+  C: { rna: ["CTP", "cytidine 5′-triphosphate"], dna: ["dCTP", "deoxycytidine 5′-triphosphate"], pairs: "G" },
+};
+function openModal(html) { $("#modalBody").innerHTML = html; $("#modal").classList.add("open"); }
+function closeModal() { $("#modal").classList.remove("open"); }
+function showNTP(letter, deoxy = false) {
+  const inf = NTP_INFO[letter], [abbr, full] = deoxy ? inf.dna : inf.rna;
+  const base = deoxy && letter === "U" ? "T" : letter;
+  openModal(`<h3>${abbr} <span style="color:var(--muted);font-size:21px">— ${full}</span></h3>
+    <p class="lead">A <b>${deoxy ? "deoxyribonucleotide" : "ribonucleotide"}</b> building block for ${deoxy ? "DNA" : "RNA"}: a <b style="color:${base === "G" ? "#b98a00" : COL[base]}">nitrogenous base</b>, a <b style="color:${COL.rnaBack}">${deoxy ? "deoxyribose" : "ribose"} sugar</b>, and three <b style="color:${COL.gold}">phosphates</b>.</p>
+    <div class="row"><button class="btn toggle ${deoxy ? "" : "on"}" id="tgR">RNA version (${inf.rna[0]})</button>
+      <button class="btn toggle ${deoxy ? "on" : ""}" id="tgD">Compare: DNA version (${inf.dna[0]})</button></div>
+    ${nucleotideSVG(base, deoxy)}
+    <ul class="notes">
+      <li><b>How to read it:</b> the sugar is drawn as a <i>Haworth projection</i> — the thick edge of the ring points toward you. The base sits <i>above</i> the ring on C1′ (the β position), while the 2′- and 3′-OH groups point down.</li>
+      <li><b>Ribose vs deoxyribose:</b> RNA sugars carry an –OH on the 2′ carbon; DNA sugars have just –H there (“deoxy”). ${deoxy ? "Toggle back to see the 2′-OH." : "Toggle to compare."}</li>
+      ${letter === "U" ? "<li><b>Uracil vs thymine:</b> RNA uses uracil; DNA uses thymine, which is uracil plus a methyl (–CH₃) group.</li>" : ""}
+      <li><b>Base pairing:</b> ${base} pairs with ${inf.pairs}.</li>
+      <li><b>Where the energy comes from:</b> when RNA polymerase adds this nucleotide, it keeps the α-phosphate and releases the β and γ phosphates as <b>pyrophosphate (PPᵢ)</b> — watch for the little puffs during transcription!</li>
+    </ul>`);
+  $("#tgR").onclick = () => showNTP(letter, false);
+  $("#tgD").onclick = () => showNTP(letter, true);
+}
+function showCodonTable() {
+  const used = new Set(ORF);
+  let h = `<h3>The genetic code</h3><p class="lead">Read a codon 5′→3′: first base = row, second = column, third = within the cell. Codons in today’s gene are <b style="color:var(--gold)">highlighted</b>.</p>
+    <table class="code"><tr><th></th>${[...BASES].map(x => `<th>${b(x)}</th>`).join("")}</tr>`;
+  for (const x of BASES) {
+    h += `<tr><th>${b(x)}</th>`;
+    for (const y of BASES) {
+      h += "<td>";
+      for (const z of BASES) {
+        const c = x + y + z, aa = CODON[c];
+        const cls = aa === "*" ? "stop" : c === "AUG" ? "start" : "";
+        const hl = used.has(c) ? ' style="background:rgba(240,172,95,.18);border-radius:4px"' : "";
+        h += `<div class="${cls}"${hl}>${b(c)}<span class="aa">${aa === "*" ? "Stop" : AA3[aa]}${c === "AUG" ? " (start)" : ""}</span></div>`;
+      }
+      h += "</td>";
+    }
+    h += "</tr>";
+  }
+  openModal(h + "</table>");
+}
+
+// =====================================================================
+//  Panel icons (SVG strings in a -30..30 box)
+// =====================================================================
+function iconNTP(l) {
+  return `<g><circle cx="-18" cy="9" r="4.5" fill="${COL.phos}"/><circle cx="-9" cy="9" r="4.5" fill="${COL.phos}"/><circle cx="0" cy="9" r="4.5" fill="${COL.phos}"/>
+    <rect x="4" y="3" width="10" height="12" rx="3" fill="${COL.rnaBack}"/>
+    <rect x="0" y="-24" width="26" height="26" rx="6" fill="${COL[l]}"/>
+    <text x="13" y="-5" font-size="19" font-weight="700" text-anchor="middle" fill="${baseInk(l)}" font-family="${MONO}">${l}</text></g>`;
+}
+const ICON_TF = `<rect x="-28" y="12" width="56" height="5" rx="2" fill="${COL.dnaBack}"/><rect x="-28" y="20" width="56" height="5" rx="2" fill="${COL.dnaBack}"/>
+  <ellipse cx="12" cy="-14" rx="13" ry="10" fill="${COL.sky}"/><ellipse cx="-14" cy="-6" rx="9" ry="8" fill="#d9b48c"/><ellipse cx="4" cy="-24" rx="10" ry="7" fill="#e9a6bf"/>
+  <path d="M-22,10 C-22,-10 -6,-6 0,0 C6,-6 22,-10 22,10 L15,10 C11,2 4,4 0,9 C-4,4 -11,2 -15,10Z" fill="#7fa9bc"/>`;
+const ICON_POL = `<ellipse cx="0" cy="0" rx="27" ry="21" fill="${COL.teal}" fill-opacity=".2" stroke="${COL.teal}" stroke-width="2.5"/>
+  <path d="M-30,6 L30,6" stroke="${COL.dnaBack}" stroke-width="3"/><path d="M-30,12 C-10,12 -8,18 0,18 C8,18 10,12 30,12" stroke="${COL.dnaBack}" stroke-width="3" fill="none"/>
+  <circle cx="5" cy="9" r="3.5" fill="${COL.rose}"/><path d="M5,9 C-5,-4 -12,-10 -20,-24" stroke="${COL.rnaBack}" stroke-width="3.5" fill="none"/>`;
+const ICON_SPLICE = `<circle cx="-10" cy="-8" r="11" fill="${COL.gold}" opacity=".85"/><circle cx="10" cy="-10" r="9" fill="${COL.tan}" opacity=".9"/>
+  <circle cx="0" cy="8" r="12" fill="#c49a6c" opacity=".95"/><circle cx="16" cy="8" r="7" fill="${COL.gold}" opacity=".7"/>
+  <text x="0" y="12" font-size="9" text-anchor="middle" fill="#2e2e2e" font-weight="700">snRNP</text>`;
+const ICON_RIBO = `<path d="M-26,0 C-28,-22 -10,-28 0,-26 C14,-28 30,-20 26,0 Z" fill="${COL.sky}" fill-opacity=".6" stroke="${COL.blue}" stroke-width="1.5"/>
+  <path d="M-22,6 C-22,20 22,20 22,6 Z" fill="#c49a6c" stroke="${COL.tan}" stroke-width="1.5"/>
+  <line x1="-30" y1="3" x2="30" y2="3" stroke="${COL.rnaBack}" stroke-width="3.5"/>`;
+// =====================================================================
+//  TRANSCRIPTION
+// =====================================================================
+const BP = 30;                         // spacing of base pairs in DNA
+const xOf = (i) => i * BP;
+const NTP_NAMES = { A: "ATP", U: "UTP", G: "GTP", C: "CTP" };
+const FLANK = 16;                      // extra bases drawn either side: the chromosome goes on
+const DNA = { coding: {}, template: {}, bend: 0, bub: { p: PLUS1, a: 0 }, wob: 1, reveal: CODING.length + FLANK + 5 };
+const labels = [];
+const keep = (lb) => (labels.push(lb), lb);
+async function clearLabels(d = 400) { const l = labels.splice(0); await Promise.all(l.map(x => x.remove(d))); }
+
+function openAmt(i) { const d = i - DNA.bub.p; return DNA.bub.a * smooth((d + 9) / 1.8) * smooth((4.5 - d) / 1.8); }
+function dnaY(i, t = Anim.t) {
+  const o = openAmt(i), bend = DNA.bend * 28 * Math.exp(-(((i - 4.5) / 3.2) ** 2)), w = DNA.wob * 2.2 * Math.sin(t * 1.6 + i * .55);
+  return { yc: -30 - 72 * o + bend + w, yt: 30 + 22 * o + bend + w, o };
+}
+function buildDNA() {
+  DNA.g = S("g", {}, L.dna);
+  // region highlights
+  const tx0 = xOf(GENE.tata[0]) - 16, tx1 = xOf(GENE.tata[1] - 1) + 16;
+  DNA.tataBox = S("rect", { x: tx0, y: -62, width: tx1 - tx0, height: 124, rx: 10, fill: COL.purple, "fill-opacity": .12, stroke: COL.purple, "stroke-dasharray": "6 6" }, L.bg);
+  const termStart = PLUS1 + TRANSCRIPT.length - 7, te0 = xOf(termStart) - 16, te1 = xOf(CODING.length - 1) + 16;
+  DNA.termBox = S("rect", { x: te0, y: -62, width: te1 - te0, height: 124, rx: 10, fill: COL.red, "fill-opacity": .08, stroke: COL.red, "stroke-dasharray": "6 6" }, L.bg);
+  DNA.pathC = S("path", { fill: "none", stroke: COL.dnaBack, "stroke-width": 4.5, "stroke-linecap": "round" }, DNA.g);
+  DNA.pathT = S("path", { fill: "none", stroke: COL.dnaBack, "stroke-width": 4.5, "stroke-linecap": "round" }, DNA.g);
+  // the gene sits inside a much longer chromosome: draw flanking DNA that fades out at both ends
+  const flankSeq = (n, seed) => { let x = seed, o = ""; for (let k = 0; k < n; k++) { x = (x * 1103515245 + 12345) % 2147483648; o += "ACGT"[x % 4]; } return o; };
+  const left = flankSeq(FLANK, 7), right = flankSeq(FLANK, 11);
+  DNA.lo = -FLANK; DNA.hi = CODING.length + FLANK;
+  const codingAt = (i) => (i < 0 ? left[i + FLANK] : i >= CODING.length ? right[i - CODING.length] : CODING[i]);
+  for (let i = DNA.lo; i < DNA.hi; i++) {
+    const cb = codingAt(i);
+    const c = makeNt(cb, { parent: DNA.g, back: COL.dnaBack }); c.ang = 180; DNA.coding[i] = c;
+    const t = makeNt(PAIR_DNA[cb], { parent: DNA.g, back: COL.dnaBack }); t.ang = 0; DNA.template[i] = t;
+  }
+  const x0 = xOf(DNA.lo), x1 = xOf(DNA.hi - 1), defs = svg.querySelector("defs");
+  const gr = S("linearGradient", { id: "dnaFadeG", gradientUnits: "userSpaceOnUse", x1: x0, y1: 0, x2: x1, y2: 0 }, defs);
+  const f = (FLANK * BP * .85) / (x1 - x0);
+  [[0, 0], [f, 1], [1 - f, 1], [1, 0]].forEach(([o, v]) => S("stop", { offset: o, "stop-color": "#ffffff", "stop-opacity": v }, gr));
+  const mk = S("mask", { id: "dnaFade", maskUnits: "userSpaceOnUse", x: x0 - 50, y: -800, width: x1 - x0 + 100, height: 1600 }, defs);
+  S("rect", { x: x0 - 50, y: -800, width: x1 - x0 + 100, height: 1600, fill: "url(#dnaFadeG)" }, mk);
+  DNA.g.setAttribute("mask", "url(#dnaFade)");
+  DNA.outer = S("g", { opacity: 0 }, L.dna);
+  for (const [x, anchor, top, bot] of [[x0 - 24, "end", "5′  · · ·", "3′  · · ·"], [x1 + 24, "start", "· · ·  3′", "· · ·  5′"]]) {
+    const t1 = S("text", { x, y: -22, "font-size": 30, fill: COL.dnaBack, "text-anchor": anchor, "font-weight": 700 }, DNA.outer); t1.textContent = top;
+    const t2 = S("text", { x, y: 46, "font-size": 30, fill: COL.dnaBack, "text-anchor": anchor, "font-weight": 700 }, DNA.outer); t2.textContent = bot;
+    const t3 = S("text", { x, y: 92, "font-size": 20, fill: COL.muted, "text-anchor": anchor }, DNA.outer); t3.textContent = "(DNA continues)";
+  }
+  onFrame((dt, t) => {
+    if (!DNA.g.isConnected) return;
+    const pc = [], pt = [];
+    for (let i = DNA.lo; i < DNA.hi; i++) {
+      const y = dnaY(i, t), rv = smooth(DNA.reveal - i), c = DNA.coding[i], tt = DNA.template[i];
+      c.x = tt.x = xOf(i); c.y = y.yc - (1 - rv) * 40; tt.y = y.yt + (1 - rv) * 40;
+      c.g.style.opacity = tt.g.style.opacity = rv; c.render(); tt.render();
+      if (rv > 0) { pc.push({ x: c.x, y: c.y }); pt.push({ x: tt.x, y: tt.y }); }
+    }
+    DNA.pathC.setAttribute("d", smoothPath(pc)); DNA.pathT.setAttribute("d", smoothPath(pt));
+  });
+}
+
+// ---------------------------------------------------------------------
+//  NTP particles: live in *view* coordinates, so the solution is everywhere
+// ---------------------------------------------------------------------
+const Parts = { list: [] };
+function makeParticleGlyph(letter, parent = L.part) {
+  const g = S("g", {}, parent);
+  const ph = [-29, -22, -15].map(x => S("circle", { cx: x, cy: 5, r: 3.2, fill: COL.gold }, g));
+  S("rect", { x: -11, y: 0, width: 8, height: 10, rx: 2.5, fill: COL.rnaBack }, g);
+  S("rect", { x: -3, y: -12, width: 16, height: 16, rx: 3.5, fill: COL[letter] }, g);
+  const t = S("text", { x: 5, y: 1.2, "font-size": 13, "font-weight": 700, "text-anchor": "middle", fill: baseInk(letter), "font-family": MONO }, g);
+  t.textContent = letter;
+  return { g, ph };
+}
+function addNTP(letter, n = 10) {
+  if (ST.phase !== "transcription") return;
+  for (let k = 0; k < n; k++) {
+    const gl = makeParticleGlyph(letter);
+    Parts.list.push({ letter, ...gl, u: 1.03 + rand(0, .1), v: rand(.12, .8), vu: -rand(.006, .012), vv: rand(-.002, .002), r: rand(-30, 30), vr: rand(-.4, .4), flying: false });
+  }
+  updateCounts();
+  Sig.fire("ntp:" + letter);
+  if (!ST.addedNTP) { ST.addedNTP = true; }
+}
+function pool(letter) { return Parts.list.filter(p => p.letter === letter && !p.flying).length; }
+function updateCounts() {
+  for (const l of "AUGC") {
+    const c = ST.cards && ST.cards[l] && ST.cards[l].querySelector(".count"); if (!c) continue;
+    const n = pool(l); c.textContent = `in solution: ${n}`; c.classList.toggle("zero", n === 0);
+  }
+}
+function particleWorld(p) { const h = Cam.h; return { x: Cam.cx - Cam.w / 2 + p.u * Cam.w, y: Cam.cy - h / 2 + p.v * h }; }
+onFrame((dt) => {
+  const s = Cam.scale() * .95, k = dt / 16;
+  for (const p of Parts.list) {
+    if (p.flying) continue;
+    p.vu += rand(-1, 1) * .00035 * k; p.vv += rand(-1, 1) * .00035 * k;
+    p.vu *= .97; p.vv *= .97; p.u += p.vu * k; p.v += p.vv * k; p.r += p.vr * k;
+    if (p.u < .03) p.vu += .0008; if (p.u > .97 && p.vu > -0.004) p.vu -= .0008;
+    if (p.v < .1) p.vv += .0006; if (p.v > .8) p.vv -= .0006;
+    const w = particleWorld(p); setT(p.g, w.x, w.y, p.r, s);
+  }
+});
+function takeParticle(letter, target) {
+  let best = null, bd = 1e9;
+  for (const p of Parts.list) if (p.letter === letter && !p.flying) { const d = dist(particleWorld(p), target); if (d < bd) { bd = d; best = p; } }
+  if (best) { best.flying = true; updateCounts(); }
+  return best;
+}
+function removeParticle(p) { p.g.remove(); Parts.list.splice(Parts.list.indexOf(p), 1); }
+function puffPPi(x, y, text = false) {
+  const g = S("g", {}, L.front);
+  const a = S("circle", { cx: 0, cy: 0, r: 3.4, fill: COL.gold }, g), c = S("circle", { cx: -7, cy: 0, r: 3.4, fill: COL.gold }, g);
+  if (text) { const t = S("text", { x: 8, y: -6, "font-size": 12, fill: COL.gold, "font-weight": 700 }, g); t.textContent = "PPᵢ released"; }
+  const dx = rand(-30, 10), dy = rand(-70, -50);
+  tween(text ? 1600 : 900, k => { setT(g, x - 18 + dx * k, y + dy * k, k * 90); g.style.opacity = 1 - k; }, ease.out).then(() => g.remove());
+}
+function flash(x, y, r = 16, col = COL.blue, dur = 500) {
+  // a soft solid glow in the highlight colour that swells slightly and fades (no outline ring)
+  const c = S("circle", { cx: x, cy: y, r, fill: col }, L.front);
+  tween(dur, k => { c.setAttribute("r", r * (1 + .35 * k)); c.style.opacity = .35 * (1 - k); }, ease.out).then(() => c.remove());
+}
+
+// ---------------------------------------------------------------------
+//  Proteins: transcription factors, RNA polymerase II
+// ---------------------------------------------------------------------
+function blob(g, cx, cy, rx, ry, fill, text, op = .92, ink = "#ffffff") {
+  S("ellipse", { cx, cy, rx, ry, fill, opacity: op, stroke: "#ffffff", "stroke-width": 2 }, g);
+  if (text) { const t = S("text", { x: cx, y: cy + 5, "font-size": 15, "text-anchor": "middle", fill: ink, "font-weight": 700 }, g); t.textContent = text; }
+}
+// a tight cluster: TFIID (TBP + TAFs) on the TATA box, TFIIA/B flanking it, TFIIE/H stacked toward +1
+function makeTF(parent) {
+  const g = S("g", {}, parent);
+  const K = "#000000";
+  blob(g, -10, -84, 50, 26, "#9cc6da", "TFIID", .95, K);
+  blob(g, -80, -36, 26, 20, "#d9b48c", "TFIIA", .95, K);
+  blob(g, 84, -34, 30, 22, COL.sky, "TFIIB", .95, K);
+  blob(g, 62, -98, 28, 21, "#a7d3c9", "TFIIE", .95, K);
+  blob(g, 112, -78, 36, 26, "#e9a6bf", "TFIIH", .95, K);
+  S("path", { d: "M-70,-6 C-70,-56 -20,-50 0,-34 C20,-50 70,-56 70,-6 L50,-6 C42,-30 14,-26 0,-12 C-14,-26 -42,-30 -50,-6Z", fill: "#7fa9bc", stroke: "#ffffff", "stroke-width": 2 }, g);
+  const t = S("text", { x: 0, y: -36, "font-size": 15, "text-anchor": "middle", fill: "#000000", "font-weight": 700 }, g); t.textContent = "TBP";
+  return entity(g);
+}
+function makePol(parent) {
+  const g = S("g", {}, parent);
+  S("ellipse", { cx: 0, cy: 0, rx: 172, ry: 112, fill: "url(#gPol)", stroke: COL.teal, "stroke-width": 3 }, g);
+  S("path", { d: "M-135,-64 C-80,-108 36,-118 100,-78", stroke: COL.teal, "stroke-opacity": .45, "stroke-width": 2.5, fill: "none" }, g);
+  const site = S("circle", { cx: 60, cy: -2, r: 9, fill: COL.rose, opacity: .75, filter: "url(#glow)" }, g);
+  const t = S("text", { x: 0, y: 140, "font-size": 19, "text-anchor": "middle", fill: COL.teal, "font-weight": 700 }, g); t.textContent = "RNA Polymerase II";
+  const e = entity(g); e.site = site; return e;
+}
+const polDockX = () => xOf(DNA.bub.p) - 60;
+
+// drift randomly then home in on a target (diffusion with a growing bias)
+async function diffuseTo(ent, target, dur = 2600) {
+  let vx = 0, vy = 0;
+  await tween(dur, k => {
+    const t = target();
+    vx = vx * .92 + rand(-1, 1) * 2.4 + (t.x - ent.x) * .0025 * k * k * 6;
+    vy = vy * .92 + rand(-1, 1) * 2.4 + (t.y - ent.y) * .0025 * k * k * 6;
+    ent.x += vx; ent.y += vy; ent.r = lerp(ent.r, 0, .05); ent.render();
+  }, ease.linear);
+  const x0 = ent.x, y0 = ent.y;
+  await tween(700, k => { const t = target(); ent.x = lerp(x0, t.x, k); ent.y = lerp(y0, t.y, k); ent.render(); }, ease.outBack);
+}
+async function wander(ent, dur = 2200) {
+  let vx = rand(-2, 2), vy = rand(-2, 2);
+  await tween(dur, k => { vx = vx * .95 + rand(-1, 1) * 1.8; vy = vy * .95 + rand(-1, 1) * 1.8 - .25; ent.x += vx; ent.y += vy; ent.render(); ent.g.style.opacity = 1 - smooth((k - .6) / .4); }, ease.linear);
+  ent.g.remove();
+}
+
+// ---------------------------------------------------------------------
+//  RNA chain: rope while being made, then laid out for processing
+// ---------------------------------------------------------------------
+const RNA = { nodes: [], mode: "none", rope: new Rope(21), cap: null };
+function buildRNALayer() {
+  RNA.bandG = S("g", {}, L.back);
+  RNA.path = S("path", { fill: "none", stroke: COL.rnaBack, "stroke-width": 4.5, "stroke-linecap": "round" }, L.rna);
+  RNA.end5 = S("text", { "font-size": 16, fill: COL.rnaBack, "font-weight": 700, "text-anchor": "middle", opacity: 0 }, L.label); RNA.end5.textContent = "5′";
+  RNA.end3 = S("text", { "font-size": 16, fill: COL.rnaBack, "font-weight": 700, "text-anchor": "middle", opacity: 0 }, L.label); RNA.end3.textContent = "3′";
+  RNA.rope.force = (n) => {
+    let fx = -.03 + rand(-.07, .07), fy = -.1 + rand(-.07, .07);
+    if (n.y > -90) fy -= .4; if (n.y < -520) fy += .2;
+    return [fx, fy];
+  };
+  onFrame(() => {
+    const N = RNA.nodes; if (!N.length) return;
+    if (RNA.mode === "rope") {
+      for (let j = 0; j < N.length; j++) {
+        const n = N[j], ti = PLUS1 + n.idx;
+        n.pin = RNA.hybrid && ti >= DNA.bub.p - 7;
+        if (n.pin) { const y = dnaY(ti); n.x = n.px = xOf(ti); n.y = n.py = y.yt - 66; n.ang = angLerp(n.ang, 180, .3); }
+      }
+      RNA.rope.nodes = N; RNA.rope.step();
+      for (let j = 0; j < N.length; j++) {
+        const n = N[j]; if (n.pin) continue;
+        const a = N[Math.max(0, j - 1)], c = N[Math.min(N.length - 1, j + 1)];
+        n.ang = angLerp(n.ang, Math.atan2(c.y - a.y, c.x - a.x) * 180 / Math.PI + 180, .25);
+      }
+    }
+    const vis = N.filter(n => !n.gone);
+    for (const n of vis) n.render();
+    // backbone drawn in runs: a looping intron is drawn separately from the exons until it is cut out
+    let d = "", run = [];
+    const flush = () => { if (run.length) d += smoothPath(run) + " "; run = []; };
+    for (const n of vis) { if (run.length && !!run[run.length - 1].loose !== !!n.loose) flush(); run.push(n); if (n.closeTo) d += `M${n.x.toFixed(1)},${n.y.toFixed(1)} L${n.closeTo.x.toFixed(1)},${n.closeTo.y.toFixed(1)} `; }
+    flush();
+    RNA.path.setAttribute("d", d);
+    const n0 = vis[0], nl = vis[vis.length - 1];
+    if (n0) { RNA.end5.setAttribute("x", n0.x - (RNA.cap ? 52 : 20)); RNA.end5.setAttribute("y", n0.y + 6); }
+    if (nl) { RNA.end3.setAttribute("x", nl.x + 20); RNA.end3.setAttribute("y", nl.y + 6); }
+    if (RNA.cap) { RNA.cap.x = n0.x - 26; RNA.cap.y = n0.y; RNA.cap.render(); }
+    if (RNA.showBands) drawBands();
+  });
+}
+function addRNANode(letter, idx, seg) {
+  const n = makeNt(letter, { parent: L.rna }); n.idx = idx; n.seg = seg; RNA.nodes.push(n); return n;
+}
+const SEG_OF = []; GENE.segments.forEach((s, si) => { for (const _ of s.seq) SEG_OF.push(si); });
+function drawBands() {
+  RNA.bandG.innerHTML = "";
+  const groups = {};
+  for (const n of RNA.nodes) { if (n.gone) continue; (groups[n.seg] ||= []).push(n); }
+  for (const k in groups) {
+    if (k === "polyA") continue;
+    const s = GENE.segments[k], col = s.kind === "exon" ? COL.exon : s.kind === "utr" ? COL.utr : COL.intron;
+    S("path", { d: smoothPath(groups[k]), stroke: col, "stroke-width": 16, "stroke-linecap": "round", fill: "none", opacity: s.kind === "intron" ? .55 : .4 }, RNA.bandG);
+  }
+}
+
+// ---------------------------------------------------------------------
+//  Panel for transcription
+// ---------------------------------------------------------------------
+function buildTranscriptionPanel() {
+  Panel.set("Nucleus · add to solution", "Click a nucleotide to pour it into the solution (+10). Drag proteins onto the DNA.");
+  ST.cards = {};
+  Panel.section("Ribonucleotides (NTPs)");
+  for (const l of "AUGC") {
+    ST.cards[l] = Panel.card({ icon: iconNTP(l), name: NTP_NAMES[l], sub: NTP_INFO[l].rna[1], count: true, info: () => showNTP(l), onClick: () => addNTP(l) });
+  }
+  Panel.section("Proteins");
+  ST.cards.tf = Panel.card({ icon: ICON_TF, name: "Transcription factors", sub: "TBP/TFIID, TFIIA, B, E, H — mark the promoter", tag: "drag",
+    drag: { ghost: () => makeTF(L.drag), drop: dropTF } });
+  ST.cards.pol = Panel.card({ icon: ICON_POL, name: "RNA Polymerase II", sub: "Builds RNA from NTPs (drag, or click to release)", tag: "drag",
+    drag: { ghost: () => makePol(L.drag), drop: dropPol }, onClick: () => dropPol(null, null) });
+  ST.btnTx = Panel.button("▶  Transcribe", () => Sig.fire("transcribe"));
+  ST.btnTx.disabled = true;
+  updateCounts();
+}
+
+async function dropTF(pt, ghost) {
+  const tx = xOf((GENE.tata[0] + GENE.tata[1] - 1) / 2);
+  if (ST.tfBound || ST.busy) { fade(ghost.g, 0, 300).then(() => ghost.g.remove()); return; }
+  L.prot.appendChild(ghost.g);
+  if (Math.abs(pt.x - tx) < 190 && Math.abs(pt.y - (-40)) < 190) {
+    ST.tfBound = true; ST.tf = ghost; ST.cards.tf.classList.add("used", "disabled"); ST.cards.tf.classList.remove("pulse");
+    const x0 = ghost.x, y0 = ghost.y;
+    await tween(800, k => { ghost.x = lerp(x0, tx, k); ghost.y = lerp(y0, dnaY(4).yc - 4, k); ghost.render(); }, ease.outBack);
+    ST.tfDocked = true;
+    Sig.fire("tf");
+  } else {
+    await fallAway(ghost, `<span class="hint">Transcription factors recognise a specific sequence — drop them on the <b>TATA box</b> (the purple highlighted region).</span>`);
+  }
+}
+async function dropPol(pt, ghost) {
+  if (ST.polDocked || ST.polComing) { if (ghost) fade(ghost.g, 0, 300).then(() => ghost.g.remove()); return; }
+  let pol = ghost;
+  if (!pol) { pol = makePol(L.prot); pol.x = Cam.cx + Cam.w / 2 - 120; pol.y = Cam.cy + rand(-120, 60); pol.render(); }
+  else L.prot.appendChild(pol.g);
+  if (!ST.tfBound) {
+    ST.cards.pol.classList.add("disabled");
+    say(`<span class="hint">RNA Polymerase II can’t find the start of a gene on its own — it bumps around and drifts off. <b>Place the transcription factors on the TATA box first.</b></span>`);
+    await wander(pol, 2600);
+    ST.cards.pol.classList.remove("disabled");
+    return;
+  }
+  ST.polComing = true; ST.cards.pol.classList.add("used", "disabled"); ST.cards.pol.classList.remove("pulse");
+  ST.pol = pol;
+  const target = () => ({ x: polDockX(), y: -10 });
+  if (dist(pol, target()) < 200) {
+    const x0 = pol.x, y0 = pol.y;
+    await tween(800, k => { pol.x = lerp(x0, target().x, k); pol.y = lerp(y0, target().y, k); pol.render(); }, ease.outBack);
+  } else {
+    say("RNA Polymerase II diffuses through the nucleus… until it bumps into the transcription factor complex, which holds on to it.");
+    await diffuseTo(pol, target, 2600);
+  }
+  ST.polDocked = true;
+  Sig.fire("pol");
+}
+
+// ---------------------------------------------------------------------
+//  The scene script
+// ---------------------------------------------------------------------
+async function runTranscription() {
+  ST.phase = "transcription"; zone("Nucleus");
+  setStep(0);
+  buildDNA(); buildRNALayer(); buildTranscriptionPanel();
+  const mid = xOf(CODING.length - 1) / 2;
+  Cam.cx = mid; Cam.cy = -10; Cam.w = 3900;
+  DNA.reveal = -FLANK;
+  say("This is a <b>gene</b>: a stretch of double-stranded DNA.");
+  await tween(2600, k => { DNA.reveal = -FLANK + k * (CODING.length + 2 * FLANK + 4); }, ease.inOut);
+  fade(DNA.outer, 1, 800);
+  // overview labels
+  const big = [];
+  await wait(400);
+  big.push(label("TATA box (promoter)", xOf(4.5), -140, { size: 50, color: COL.purple, arrow: [xOf(4.5), -115, xOf(4.5), -70] }));
+  await wait(500);
+  big.push(label("+1 start", xOf(PLUS1), 175, { size: 48, color: COL.teal, arrow: [xOf(PLUS1), 118, xOf(PLUS1), 70] }));
+  await wait(500);
+  big.push(label("Terminator (stop)", xOf(CODING.length - 7), -140, { size: 50, color: COL.red, arrow: [xOf(CODING.length - 7), -115, xOf(CODING.length - 7), -70] }));
+  await wait(400);
+  big.push(bracket(xOf(PLUS1), xOf(PLUS1 + TRANSCRIPT.length - 1), 90, "the gene — this part gets copied into RNA", { size: 44, color: COL.teal }));
+  say("The <b style='color:var(--purple)'>TATA box</b> marks the promoter. Transcription starts at <b>+1</b> and ends at the <b style='color:var(--T)'>terminator</b>.");
+  await wait(3600);
+  await Promise.all(big.map(x => x.remove(500)));
+  await Cam.to({ x: 330, y: -40, w: 1350 }, 1800);
+  keep(label("coding strand  5′→3′", -170, -58, { size: 15, color: COL.slate }));
+  keep(label("template strand  3′→5′", -170, 84, { size: 15, color: COL.slate }));
+  keep(label("TATA box", xOf(4.5), 100, { size: 16, color: COL.purple }));
+  keep(label("+1", xOf(PLUS1), 98, { size: 16, color: COL.teal, arrow: [xOf(PLUS1), 82, xOf(PLUS1), 58] }));
+  setStep(1);
+  say("Click the <b>ribonucleotides</b> (ATP, UTP, GTP, CTP) to add them to the solution — tap <i>i</i> to see each structure. Then <b>drag the transcription factors onto the TATA box</b>.");
+  pulse(ST.cards.tf);
+  await Sig.wait("tf");
+  // TBP bends DNA, TFIIH opens it
+  keep(label("TBP binds the TATA box and bends the DNA", xOf(4.5), -250, { size: 16, color: COL.purple }));
+  say("<b>TBP</b> grips the TATA box and <b>bends</b> the DNA; the other factors assemble around it.");
+  await tween(1100, k => { DNA.bend = k; }, ease.outElastic);
+  await wait(600);
+  say("<b>TFIIH</b> (a helicase) pries the two strands apart at +1, exposing the <b>template strand</b>.");
+  await tween(1800, k => { DNA.bub.a = k; }, ease.inOut);
+  keep(label("transcription bubble", xOf(PLUS1 - 2), -138, { size: 16, color: COL.text }));
+  setStep(2);
+  say("The DNA is open! Now bring in <b>RNA Polymerase II</b> — drag it in (or click it and let it diffuse).");
+  pulse(ST.cards.pol);
+  await Sig.wait("pol");
+  await clearLabels();
+  keep(label("pre-initiation complex", polDockX(), -160, { size: 16, color: COL.teal }));
+  say("Polymerase is locked onto the promoter. Make sure the solution has nucleotides, then press <b>▶ Transcribe</b>.");
+  ST.btnTx.disabled = false; ST.btnTx.classList.add("pulse");
+  await Sig.wait("transcribe");
+  ST.btnTx.disabled = true;
+  await clearLabels();
+  await elongate();
+  await terminate();
+  await processRNA();
+}
+
+async function elongate() {
+  setStep(3);
+  RNA.mode = "rope"; RNA.hybrid = true;
+  Cam.follow = () => ({ x: xOf(DNA.bub.p) + 60, y: -110 }); Cam.followRate = .05;
+  Cam.to({ w: 1450 }, 1200);
+  say("Polymerase reads the template <b>3′→5′</b> and builds RNA <b>5′→3′</b>. Each incoming NTP must base-pair with the template: " +
+    `${b("A")}–${b("U")}, ${b("T")}–${b("A")}, ${b("G")}–${b("C")}, ${b("C")}–${b("G")}.`);
+  let stalled = false;
+  for (let j = 0; j < TRANSCRIPT.length; j++) {
+    const need = TRANSCRIPT[j], ti = PLUS1 + j;
+    const target = () => ({ x: xOf(ti), y: dnaY(ti).yt - 66 });
+    let p = takeParticle(need, target());
+    if (!p) {
+      stalled = true;
+      const tpl = DNA.template[ti];
+      tpl.box.setAttribute("stroke", COL.ink); tpl.box.setAttribute("stroke-width", 2.5);
+      say(`<span class="warn">Stalled!</span> The next template base is <b>${b(TEMPLATE[ti])}</b>, so polymerase needs <b>${NTP_NAMES[need]}</b> — but there’s none in solution. Add some ${NTP_NAMES[need]} from the panel.`);
+      pulse(ST.cards[need]);
+      const pol = ST.pol, stop = onFrame((dt, t) => { pol.x = polDockX() + Math.sin(t * 40) * 3; pol.render(); const k = .5 + .5 * Math.sin(t * 8); tpl.box.setAttribute("fill", mixHex(COL[TEMPLATE[ti]], "#000000", k * .85)); tpl.txt.setAttribute("fill", k > .45 ? "#ffffff" : baseInk(TEMPLATE[ti])); });
+      while (!p) { await Sig.wait("ntp:" + need); p = takeParticle(need, target()); }
+      stop(); tpl.box.removeAttribute("stroke"); tpl.box.setAttribute("fill", COL[TEMPLATE[ti]]); tpl.txt.setAttribute("fill", baseInk(TEMPLATE[ti])); ST.cards[need].classList.remove("pulse");
+      say("Back on track — polymerase grabs the matching nucleotide and keeps going.");
+    }
+    const dur = j < 3 ? 900 : j < 8 ? 480 : 260;
+    const from = particleWorld(p), s0 = Cam.scale() * 1.05;
+    L.front.appendChild(p.g);
+    await fly(from, target(), dur, (x, y, k) => { setT(p.g, x, y, lerp(p.r, 0, k), lerp(s0, 1, k)); }, { arc: .2 });
+    const tg = target(); removeParticle(p);
+    const n = addRNANode(need, j, SEG_OF[j]); n.place(tg.x, tg.y, 180); n.pin = true;
+    puffPPi(tg.x, tg.y + 6, j < 2);
+    flash(tg.x, tg.y + 33, 10, COL[need], 450);
+    if (j === 0) { RNA.end5.style.opacity = 1; keep(label("first ribonucleotide", tg.x, tg.y - 190, { size: 15, color: COL.rnaBack, arrow: [tg.x, tg.y - 180, tg.x, tg.y - 40] })); }
+    if (j === 4) clearLabels();
+    if (j === 10 && !stalled) say("Notice the growing RNA peeling away from the DNA, and the DNA zipping back together behind polymerase.");
+    await tween(dur * .55, k => { DNA.bub.p = ti + k; ST.pol.x = polDockX(); ST.pol.render(); }, ease.inOut);
+  }
+}
+
+async function terminate() {
+  setStep(4);
+  say("Polymerase transcribes through the <b style='color:var(--T)'>terminator</b> region… and lets go. The new RNA is released.");
+  await wait(500);
+  RNA.hybrid = false; RNA.end3.style.opacity = 1;
+  Cam.follow = null;
+  const pol = ST.pol, tf = ST.tf, px = pol.x, py = pol.y, fx = tf.x, fy = tf.y;
+  const ps = Parts.list.slice();
+  await Promise.all([
+    tween(1800, k => { DNA.bub.a = 1 - k; }),
+    tween(2200, k => { pol.x = px + 420 * k; pol.y = py + 260 * k * k; pol.r = 25 * k; pol.render(); pol.g.style.opacity = 1 - k; }, ease.in),
+    tween(2200, k => { tf.x = fx - 120 * k; tf.y = fy + 300 * k * k; tf.render(); tf.g.style.opacity = 1 - k; DNA.bend = 1 - k; }, ease.in),
+    fade(L.part, 0, 1500),
+  ]);
+  pol.g.remove(); tf.g.remove();
+  ps.forEach(removeParticle); L.part.style.opacity = .8;
+  ST.phase = "processing";
+  for (const l of "AUGC") ST.cards[l].classList.add("disabled");
+  await wait(600);
+  await Promise.all([fade(DNA.g, 0, 1400), fade(DNA.outer, 0, 1400), fade(L.bg, 0, 1400)]);
+  DNA.g.remove(); DNA.outer.remove(); L.bg.innerHTML = ""; L.bg.style.opacity = 1;
+}
+
+// ---------------------------------------------------------------------
+//  RNA processing: lay out, splice, cap, poly-A, export
+// ---------------------------------------------------------------------
+const SP = 22;          // nucleotide spacing in processed RNA
+const LINE_Y = -260;
+function makeSpliceosome(parent) {
+  const g = S("g", {}, parent);
+  blob(g, -26, -16, 26, 22, COL.gold, "U1"); blob(g, 26, -20, 22, 19, COL.tan, "U2");
+  blob(g, 0, 18, 30, 22, "#c49a6c", "U4/U6"); blob(g, 38, 16, 18, 16, "#603813", "U5");
+  return entity(g);
+}
+async function dropSplice(pt, ghost) {
+  if (ST.phase !== "splice" || ST.spliceGo) { fade(ghost.g, 0, 300).then(() => ghost.g.remove()); return; }
+  const N = RNA.nodes, x0 = N[0].x - 40, x1 = N[N.length - 1].x + 40;
+  L.prot.appendChild(ghost.g);
+  if (pt.x > x0 && pt.x < x1 && Math.abs(pt.y - LINE_Y) < 170) {
+    ST.spliceGo = true; ST.cards.splice.classList.add("used", "disabled"); ST.cards.splice.classList.remove("pulse");
+    ST.spliceEnt = ghost; Sig.fire("splice");
+  } else await fallAway(ghost, `<span class="hint">The spliceosome works on RNA — drop it onto the pre-mRNA strand.</span>`);
+}
+
+async function processRNA() {
+  setStep(5);
+  RNA.mode = "static";
+  const N = RNA.nodes, cx = Cam.cx, x0 = cx - (N.length - 1) * SP / 2;
+  const start = N.map(n => ({ x: n.x, y: n.y, a: n.ang }));
+  Cam.to({ x: cx, y: LINE_Y + 20, w: (N.length + 6) * SP }, 2200);
+  say("This first transcript is called <b>pre-mRNA</b>. Let’s straighten it out and look closer.");
+  await tween(2400, k => {
+    N.forEach((n, i) => { const kk = smooth(k * 1.6 - i / N.length * .6); n.x = lerp(start[i].x, x0 + i * SP, kk); n.y = lerp(start[i].y, LINE_Y, kk); n.ang = angLerp(start[i].a, 0, kk); });
+  }, ease.linear);
+  RNA.showBands = true;
+  // label segments
+  let i0 = 0;
+  for (const s of GENE.segments) {
+    const xa = x0 + i0 * SP, xb = x0 + (i0 + s.seq.length - 1) * SP;
+    const col = s.kind === "exon" ? COL.exon : s.kind === "utr" ? COL.blue : COL.muted;
+    keep(label(s.name, (xa + xb) / 2, LINE_Y - 48, { size: s.kind === "utr" ? 13 : 16, color: col }));
+    i0 += s.seq.length; await wait(220);
+  }
+  say("Pre-mRNA contains <b style='color:var(--teal)'>exons</b> (kept) and <b style='color:#9aa3b2'>introns</b> (removed). Drag the <b>spliceosome</b> onto the RNA to splice out the introns.");
+  ST.phase = "splice";
+  await Panel.swap("Nucleus · RNA processing", "Pre-mRNA must be processed before it can leave the nucleus.", "", () => {
+    Panel.section("Machines");
+    ST.cards.splice = Panel.card({ icon: ICON_SPLICE, name: "Spliceosome", sub: "snRNPs (U1, U2, U4/U6, U5) that cut out introns", tag: "drag", cls: "pulse",
+      drag: { ghost: () => makeSpliceosome(L.drag), drop: dropSplice } });
+  });
+  await Sig.wait("splice");
+  await clearLabels();
+  const sp = ST.spliceEnt;
+  await spliceIntron(2, sp);
+  await spliceIntron(4, sp);
+  await fade(sp.g, 0, 400); sp.g.remove();
+  await capAndTail();
+  await exportMRNA();
+}
+
+async function spliceIntron(segIdx, sp) {
+  const N = RNA.nodes, seg = GENE.segments[segIdx];
+  const I0 = N.findIndex(n => n.seg === segIdx), m = seg.seq.length, bi = seg.branch;
+  const intr = N.slice(I0, I0 + m), down = N.slice(I0 + m);
+  const jx = N[I0 - 1].x + SP / 2;
+  say(`The spliceosome’s snRNPs recognise <b>${seg.name}</b>: ${b("GU")} at its 5′ end, a branch-point ${b("A")}, and ${b("AG")} at its 3′ end.`);
+  // spliceosome hops onto the intron
+  const cx = (intr[0].x + intr[m - 1].x) / 2, sx = sp.x, sy = sp.y;
+  await tween(900, k => { sp.x = lerp(sx, cx, k); sp.y = lerp(sy, LINE_Y - 95, k); sp.render(); }, ease.outBack);
+  const marks = [flash(intr[0].x, LINE_Y - 22, 14, COL.gold, 900), flash(intr[bi].x, LINE_Y - 22, 14, COL.gold, 900), flash(intr[m - 1].x, LINE_Y - 22, 14, COL.gold, 900)];
+  const lb = [label("5′ splice site", intr[0].x, LINE_Y + 34, { size: 13, color: COL.gold }), label("branch A", intr[bi].x, LINE_Y + 34, { size: 13, color: COL.gold }),
+    label("3′ splice site", intr[m - 1].x, LINE_Y + 34, { size: 13, color: COL.gold })];
+  await wait(1500);
+  lb.forEach(l => l.remove());
+  // loop into a lariat while the downstream exon slides in
+  const s0 = intr.map(n => ({ x: n.x, y: n.y, a: n.ang })), d0 = down.map(n => n.x);
+  const R = (bi + 1) * SP / (2 * Math.PI) * 1.1, cy = LINE_Y - 80 - R;
+  const tgt = intr.map((n, k) => {
+    if (k <= bi) { const a = Math.PI / 2 + (k / (bi + 1)) * Math.PI * 2; return { x: jx + R * Math.cos(a), y: cy + R * Math.sin(a), a: a * 180 / Math.PI + 90 }; }
+    const t = k - bi; return { x: jx + t * SP * .9, y: LINE_Y - 80 - 8 * Math.sin(t / (m - bi) * Math.PI), a: 0 };
+  });
+  intr.forEach(n => (n.loose = true));
+  say("The intron loops back on itself — its 5′ end bonds to the branch-point A, forming a <b>lariat</b> — and the two exons are joined.");
+  const spx = sp.x, spy = sp.y;
+  await tween(2400, k => {
+    intr.forEach((n, i) => { n.x = lerp(s0[i].x, tgt[i].x, k); n.y = lerp(s0[i].y, tgt[i].y, k); n.ang = angLerp(s0[i].a, tgt[i].a, k); });
+    down.forEach((n, i) => { n.x = d0[i] - k * m * SP; });
+    sp.x = lerp(spx, jx, k); sp.y = lerp(spy, cy - R - 40, k); sp.render();
+  }, ease.inOut);
+  intr[bi].closeTo = intr[0];   // 2'-5' bond: intron 5' end joins the branch-point A
+  flash(jx, LINE_Y - 8, 18, COL.teal, 900);
+  const jl = label("exons joined", jx, LINE_Y + 40, { size: 14, color: COL.teal });
+  // lariat drifts off and is degraded
+  const lg = intr.map(n => ({ x: n.x, y: n.y }));
+  const ll = label("intron lariat → degraded", jx + R + 34, cy + 6, { size: 14, color: COL.muted, anchor: "start" });
+  await tween(1800, k => { intr.forEach((n, i) => { n.x = lg[i].x + 60 * k; n.y = lg[i].y - 160 * k; n.g.style.opacity = 1 - k; }); ll.g.style.opacity = 1 - k; }, ease.in);
+  intr.forEach(n => { n.g.remove(); }); RNA.nodes = N.filter(n => !intr.includes(n));
+  ll.g.remove(); jl.remove(1200);
+}
+
+async function capAndTail() {
+  const N = RNA.nodes;
+  await Cam.to({ x: (N[0].x + N[N.length - 1].x) / 2 + 160, w: (N.length + 34) * SP }, 1400);
+  // 5' cap
+  say("A <b>5′ cap</b> — a modified guanine (7-methylguanosine) — is attached to the 5′ end. (In real cells this happens while transcription is still going.)");
+  const capG = S("g", {}, L.rna);
+  S("path", { d: "M8,0 L20,0", stroke: COL.gold, "stroke-width": 3 }, capG);
+  S("circle", { cx: 0, cy: 0, r: 15, fill: COL.purple, stroke: "#ffffff", "stroke-width": 2 }, capG);
+  const ct = S("text", { x: 0, y: 4.5, "font-size": 11, "text-anchor": "middle", fill: "#ffffff", "font-weight": 700 }, capG); ct.textContent = "m⁷G";
+  const cap = entity(capG); cap.x = N[0].x - 260; cap.y = LINE_Y - 260; cap.render();
+  await fly({ x: cap.x, y: cap.y }, { x: N[0].x - 26, y: N[0].y }, 1400, (x, y) => { cap.x = x; cap.y = y; cap.render(); }, { arc: -.3 });
+  RNA.cap = cap; flash(N[0].x - 26, N[0].y, 16, COL.purple, 700);
+  keep(label("5′ cap", N[0].x - 30, LINE_Y - 64, { size: 16, color: COL.purple, arrow: [N[0].x - 30, LINE_Y - 56, N[0].x - 28, LINE_Y - 20] }));
+  await wait(1600);
+  // poly-A tail
+  const last = () => RNA.nodes[RNA.nodes.length - 1];
+  const sig = RNA.nodes.slice(-6);
+  sig.forEach(n => flash(n.x, n.y - 22, 12, COL.gold, 900));
+  keep(label("AAUAAA signal", (sig[0].x + sig[5].x) / 2, LINE_Y + 36, { size: 13, color: COL.gold }));
+  say("At the 3′ end, <b>poly(A) polymerase</b> recognises the AAUAAA signal and adds a string of adenines, one ATP at a time — the <b>poly-A tail</b>.");
+  const pap = entity(S("g", {}, L.prot));
+  blob(pap.g, 0, 0, 36, 26, COL.tan, "PAP");
+  pap.x = last().x + 200; pap.y = LINE_Y - 200; pap.render();
+  await tween(900, k => { pap.x = lerp(last().x + 200, last().x + 30, k); pap.y = lerp(LINE_Y - 200, LINE_Y - 55, k); pap.render(); }, ease.outBack);
+  let tailLabel = null;
+  for (let k = 0; k < GENE.polyA; k++) {
+    const e = last(), tg = { x: e.x + SP, y: LINE_Y };
+    const gl = makeParticleGlyph("A", L.front);
+    const from = { x: tg.x + rand(80, 260), y: LINE_Y - rand(160, 300) };
+    const dur = k < 3 ? 700 : 260;
+    await fly(from, tg, dur, (x, y, kk) => setT(gl.g, x, y, 0, 1), { arc: .25 });
+    gl.g.remove();
+    const n = makeNt("A", { parent: L.rna }); n.seg = "polyA"; n.place(tg.x, tg.y, 0); RNA.nodes.push(n);
+    puffPPi(tg.x, tg.y + 4, k === 0);
+    pap.x = tg.x + 30; pap.render();
+    if (k === 4) tailLabel = keep(label("poly-A tail", tg.x + 40, LINE_Y + 40, { size: 16, color: COL.A }));
+    if (k > 6) Cam.cx = lerp(Cam.cx, tg.x - 300, .15);
+  }
+  await tween(900, k => { pap.y = LINE_Y - 55 - 200 * k; pap.x += 2; pap.render(); pap.g.style.opacity = 1 - k; }, ease.in);
+  pap.g.remove();
+  await clearLabels();
+}
+
+async function exportMRNA() {
+  const N = RNA.nodes, xL = N[0].x, xR = N[N.length - 1].x;
+  keep(label("Mature mRNA ✓", (xL + xR) / 2, LINE_Y - 70, { size: 22, color: COL.teal }));
+  keep(label("5′ cap", xL - 26, LINE_Y + 40, { size: 13, color: COL.purple }));
+  keep(label("poly-A tail", xR - GENE.polyA * SP / 2, LINE_Y + 40, { size: 13, color: COL.A }));
+  say("Spliced, capped and tailed: this is <b>mature mRNA</b>. Now it leaves the nucleus through a <b>nuclear pore</b> — cap first.");
+  await wait(2600);
+  await clearLabels();
+  // nuclear envelope with a pore, to the left of the mRNA
+  const mx = xL - 260, g = S("g", { opacity: 0 }, L.bg);
+  S("rect", { x: mx - 4000, y: LINE_Y - 3000, width: 4000, height: 6000, fill: "#e6f1f7", opacity: 1 }, g);
+  for (const dx of [-12, 12]) {
+    S("line", { x1: mx + dx, y1: LINE_Y - 1500, x2: mx + dx, y2: LINE_Y - 34, stroke: COL.slate, "stroke-width": 5, "stroke-linecap": "round" }, g);
+    S("line", { x1: mx + dx, y1: LINE_Y + 34, x2: mx + dx, y2: LINE_Y + 1500, stroke: COL.slate, "stroke-width": 5, "stroke-linecap": "round" }, g);
+  }
+  blob(g, mx, LINE_Y - 42, 22, 14, COL.purple, "", .8); blob(g, mx, LINE_Y + 42, 22, 14, COL.purple, "", .8);
+  const tl = S("g", {}, g);
+  const t1 = S("text", { x: mx - 30, y: LINE_Y - 140, "font-size": 18, fill: COL.muted, "text-anchor": "end", "font-style": "italic" }, tl); t1.textContent = "cytoplasm";
+  const t2 = S("text", { x: mx + 30, y: LINE_Y - 140, "font-size": 18, fill: COL.muted, "font-style": "italic" }, tl); t2.textContent = "nucleus";
+  const t3 = S("text", { x: mx, y: LINE_Y + 90, "font-size": 15, fill: COL.purple, "text-anchor": "middle" }, tl); t3.textContent = "nuclear pore";
+  await Cam.to({ x: mx + 200, w: 1500 }, 1400);
+  await fade(g, 1, 700);
+  const D = (xR - xL) + 700, x0 = N.map(n => n.x);
+  zone("Cytoplasm");
+  await tween(4200, k => {
+    N.forEach((n, i) => { n.x = x0[i] - D * k; const d = Math.abs(n.x - mx); n.s = 1 - .25 * Math.exp(-((d / 30) ** 2)); });
+    Cam.cx = mx + 200 - D * k * .9;
+  }, ease.inOut);
+  await fade(g, 0, 800); g.remove();
+  startTranslation();
+}
+// =====================================================================
+//  TRANSLATION
+// =====================================================================
+const TL = { misses: 0, totalMisses: 0, tRNAs: [] };
+const PEP = { beads: [], rope: new Rope(30), mode: "none" };
+const codonNode = (c, k = 1) => RNA.nodes[START + c * 3 + k];
+const codonX = (c) => codonNode(c).x;
+const codonOf = (c) => ORF[c];
+
+function makeCap(parent) {
+  const capG = S("g", {}, parent);
+  S("path", { d: "M8,0 L20,0", stroke: COL.gold, "stroke-width": 3 }, capG);
+  S("circle", { cx: 0, cy: 0, r: 15, fill: COL.purple, stroke: "#ffffff", "stroke-width": 2 }, capG);
+  const ct = S("text", { x: 0, y: 4.5, "font-size": 11, "text-anchor": "middle", fill: "#ffffff", "font-weight": 700 }, capG); ct.textContent = "m⁷G";
+  return entity(capG);
+}
+function buildMatureDirect() {
+  // used by "Skip to translation": build the mature mRNA without the transcription scenes
+  buildRNALayer();
+  RNA.mode = "static"; RNA.showBands = true;
+  let i = 0;
+  GENE.segments.forEach((s, si) => { if (s.kind === "intron") return; for (const ch of s.seq) { const n = makeNt(ch, { parent: L.rna }); n.seg = si; n.place(i * SP, LINE_Y, 0); RNA.nodes.push(n); i++; } });
+  for (let k = 0; k < GENE.polyA; k++) { const n = makeNt("A", { parent: L.rna }); n.seg = "polyA"; n.place(i * SP, LINE_Y, 0); RNA.nodes.push(n); i++; }
+  RNA.cap = makeCap(L.rna);
+  RNA.end5.style.opacity = 1; RNA.end3.style.opacity = 1;
+}
+
+// ---------------------------------------------------------------------
+//  Shapes: ribosome, tRNA, release factor, amino-acid bead
+// ---------------------------------------------------------------------
+const LARGE_D = "M-182,-8 C-198,-190 -92,-330 0,-328 C98,-330 198,-190 182,-8 Q0,4 -182,-8Z";
+const AA_DX = -20, AA_DY = -282;          // amino acid sits on the 3'-terminal A of CCA
+function drawSmall(g) {
+  S("ellipse", { cx: 0, cy: 44, rx: 172, ry: 42, fill: "url(#gSmall)", stroke: COL.tan, "stroke-width": 2.5 }, g);
+  [["E", -3 * SP], ["P", 0], ["A", 3 * SP]].forEach(([t, x]) => {
+    const tt = S("text", { x, y: 56, "font-size": 24, "text-anchor": "middle", fill: "#603813", "font-weight": 700 }, g); tt.textContent = t;
+  });
+  const n = S("text", { x: 0, y: 78, "font-size": 14, "text-anchor": "middle", fill: "#603813" }, g); n.textContent = "small subunit";
+}
+function drawLarge(g) {
+  S("path", { d: LARGE_D, fill: "url(#gLarge)", stroke: COL.blue, "stroke-width": 2.5 }, g);
+  S("ellipse", { cx: -20, cy: -318, rx: 20, ry: 9, fill: "#ffffff", stroke: COL.blue, "stroke-width": 2 }, g);
+  const n = S("text", { x: 168, y: -276, "font-size": 15, "text-anchor": "middle", fill: COL.blue, "font-weight": 700 }, g); n.textContent = "large subunit";
+  const n2 = S("text", { x: 8, y: -336, "font-size": 14, "text-anchor": "start", fill: COL.blue }, g); n2.textContent = "← exit tunnel";
+}
+function makeRibosomeGhost(parent) {
+  const g = S("g", {}, parent); const sg = S("g", {}, g), lg = S("g", {}, g);
+  drawSmall(sg); drawLarge(lg);
+  return entity(g);
+}
+// tRNA cloverleaf (76 nt), drawn so the anticodon reads 3'→5' left-to-right over a 5'→3' codon:
+// that puts the 5' end on the right, the D arm on the right, the TΨC arm on the left and 3'-CCA on the left.
+const TRNA_GEOM = (() => {
+  const P = [];
+  for (let k = 0; k < 7; k++) P.push([8, -220 + 10 * k]);                     // 1-7 acceptor stem (5' strand)
+  P.push([15, -156], [22, -162]);                                             // 8-9
+  for (let k = 0; k < 4; k++) P.push([28 + 10 * k, -167]);                    // 10-13 D stem
+  for (let k = 0; k < 8; k++) { const a = (-130 + k * (260 / 7)) * Math.PI / 180; P.push([82 + 17 * Math.cos(a), -158 + 17 * Math.sin(a)]); } // 14-21 D loop
+  for (let k = 0; k < 4; k++) P.push([58 - 10 * k, -149]);                    // 22-25 D stem
+  P.push([18, -144]);                                                         // 26
+  for (let k = 0; k < 5; k++) P.push([8, -136 + 10 * k]);                     // 27-31 anticodon stem
+  P.push([24, -86], [32, -71], [SP, -58], [0, -58], [-SP, -58], [-32, -71], [-24, -86]); // 32-38 anticodon loop (34-36 = anticodon)
+  for (let k = 0; k < 5; k++) P.push([-8, -96 - 10 * k]);                     // 39-43 anticodon stem
+  P.push([-16, -132], [-24, -127], [-31, -131], [-34, -140]);                 // 44-47 variable loop
+  for (let k = 0; k < 5; k++) P.push([-38 - 10 * k, -149]);                   // 48-52 TΨC stem
+  for (let k = 0; k < 7; k++) { const a = (45 + k * 45) * Math.PI / 180; P.push([-96 + 16 * Math.cos(a), -158 + 16 * Math.sin(a)]); } // 53-59 TΨC loop
+  for (let k = 0; k < 5; k++) P.push([-78 + 10 * k, -167]);                   // 60-64 TΨC stem
+  P.push([-22, -163], [-14, -158]);                                           // 65-66
+  for (let k = 0; k < 6; k++) P.push([-8, -170 - 10 * k]);                    // 67-72 acceptor stem (3' strand)
+  P.push([-9, -230], [-11, -241], [-14, -252], [-17, -263]);                  // 73 discriminator, 74-76 CCA
+  const pairs = [];
+  for (let k = 0; k < 6; k++) pairs.push([k + 1, 72 - k]);                    // acceptor (1-72 … 6-67)
+  pairs.push([7, 66]);
+  for (let k = 0; k < 4; k++) pairs.push([10 + k, 25 - k]);
+  for (let k = 0; k < 5; k++) pairs.push([27 + k, 43 - k]);
+  for (let k = 0; k < 5; k++) pairs.push([48 + k, 64 - k]);
+  return { P, pairs };
+})();
+function drawCloverleaf(g, body, labels = false) {
+  const pts = TRNA_GEOM.P.map(([x, y]) => ({ x, y }));
+  const d = smoothPath(pts);
+  // soft backdrop so overlapping tRNAs (P and A site) read as layers
+  const bk = { fill: "#e8f3f9", opacity: .93 };
+  S("ellipse", { cx: -6, cy: -158, rx: 124, ry: 28, ...bk }, g);
+  S("rect", { x: -24, y: -272, width: 46, height: 200, rx: 18, ...bk }, g);
+  S("ellipse", { cx: 0, cy: -76, rx: 44, ry: 26, ...bk }, g);
+  S("path", { d, stroke: "#ffffff", "stroke-width": 11, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round", opacity: .9 }, g);
+  for (const [i, j] of TRNA_GEOM.pairs) { const a = pts[i - 1], c = pts[j - 1]; S("line", { x1: a.x, y1: a.y, x2: c.x, y2: c.y, stroke: "#9fb7c2", "stroke-width": 2.2 }, g); }
+  S("path", { d, stroke: body, "stroke-width": 3.4, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+  pts.forEach((q, k) => { if (k < 33 || k > 35) S("circle", { cx: q.x, cy: q.y, r: 2.8, fill: body }, g); });
+  const t5 = S("text", { x: 16, y: -224, "font-size": 13, fill: body, "font-weight": 700 }, g); t5.textContent = "5′";
+  const t3 = S("text", { x: -2, y: -262, "font-size": 13, fill: body, "font-weight": 700 }, g); t3.textContent = "3′";
+  if (labels) {
+    const lg = S("g", { class: "trnaLabels" }, g);
+    [["acceptor stem", 22, -200, "start"], ["CCA", -24, -250, "end"], ["D arm", 82, -182, "middle"], ["TΨC arm", -104, -182, "middle"],
+      ["anticodon loop", 44, -74, "start"], ["variable loop", -40, -118, "end"]].forEach(([t, x, y, an]) => {
+      const e = S("text", { x, y, "font-size": 12.5, fill: COL.slate, "text-anchor": an, "font-weight": 700 }, lg); e.textContent = t;
+    });
+  }
+}
+function makeTRNA(codon, aa, parent = L.prot, labels = false) {
+  const ac = anticodonOf(codon), g = S("g", {}, parent);
+  drawCloverleaf(g, COL.navy, labels);
+  const boxes = [];
+  [...ac].forEach((ch, k) => {
+    const x = (k - 1) * SP;
+    S("line", { x1: x, y1: -58, x2: x, y2: -50, stroke: COL[ch], "stroke-width": 3 }, g);
+    const bx = S("rect", { x: x - 9, y: -51, width: 18, height: 18, rx: 4, fill: COL[ch] }, g);
+    S("circle", { cx: x, cy: -58, r: 4, fill: COL.navy }, g);
+    const t = S("text", { x, y: -37, "font-size": 14, "text-anchor": "middle", "font-weight": 700, fill: baseInk(ch), "font-family": MONO }, g); t.textContent = ch;
+    boxes.push(bx);
+  });
+  const e = entity(g); e.codon = codon; e.aa = aa; e.ac = ac; e.boxes = boxes;
+  return e;
+}
+function iconTRNA(ac) {
+  const pts = TRNA_GEOM.P.map(([x, y]) => ({ x, y }));
+  let s = `<g transform="translate(2,24) scale(.2)"><path d="${smoothPath(pts)}" stroke="${COL.navy}" stroke-width="10" fill="none" stroke-linejoin="round"/>`;
+  [...ac].forEach((ch, k) => { s += `<rect x="${(k - 1) * SP - 11}" y="-58" width="22" height="30" rx="5" fill="${COL[ch]}"/>`; });
+  return s + "</g>";
+}
+function makeRF(parent = L.prot) {
+  const g = S("g", {}, parent);
+  const sg = S("g", { transform: "scale(1.15,1.6)" }, g);
+  S("path", { d: `M-${SP + 6},-34 C-${SP + 10},-70 -30,-80 -16,-110 C-30,-140 -20,-170 0,-172 C20,-170 30,-140 16,-110 C30,-80 ${SP + 10},-70 ${SP + 6},-34 Z`,
+    fill: "#e8b27a", opacity: .95, stroke: "#ffffff", "stroke-width": 1.5 }, sg);
+  const t = S("text", { x: 0, y: -160, "font-size": 22, "text-anchor": "middle", fill: "#000000", "font-weight": 700 }, g); t.textContent = "RF";
+  const t2 = S("text", { x: 0, y: -90, "font-size": 13, "text-anchor": "middle", fill: "#000000" }, g); t2.textContent = "release factor";
+  return entity(g);
+}
+const ICON_RF = `<path d="M-18,22 C-20,4 -12,0 -8,-6 C-14,-14 -10,-26 0,-26 C10,-26 14,-14 8,-6 C12,0 20,4 18,22Z" fill="#e8b27a"/>
+  <text x="0" y="10" font-size="12" text-anchor="middle" font-weight="700" fill="#000000">RF</text>`;
+function makeBead(aa) {
+  const g = S("g", {}, PEP.g);
+  S("circle", { r: 18, fill: AA_COLOR(aa), stroke: "#ffffff", "stroke-width": 2.5 }, g);
+  const t = S("text", { y: 5, "font-size": 13.5, "text-anchor": "middle", "font-weight": 700, fill: AA_INK(aa) }, g); t.textContent = AA3[aa];
+  return { g, aa, x: 0, y: 0, px: 0, py: 0, pin: true, anchor: null };
+}
+
+// ---------------------------------------------------------------------
+//  Peptide physics (rope rising through the exit tunnel)
+// ---------------------------------------------------------------------
+function setupPeptideLayer() {
+  PEP.bond = S("path", { fill: "none", stroke: COL.slate, "stroke-width": 3.5, "stroke-opacity": .8 }, L.label);
+  PEP.g = S("g", {}, L.label);
+  PEP.rope.len = 30; PEP.rope.damp = .9;
+  PEP.rope.force = (n) => {
+    const tx = TL.rib ? TL.rib.px - 20 : n.x, ty = LINE_Y - 322;
+    if (PEP.mode === "free") return [rand(-.08, .08), -.05 + rand(-.08, .08)];
+    if (n.y > ty) return [(tx - n.x) * .06, -.55];
+    return [rand(-.1, .1) - .05, -.3 + rand(-.08, .08) + (n.y < LINE_Y - 680 ? .5 : 0)];
+  };
+  onFrame(() => {
+    const Bs = PEP.beads;
+    for (const bd of Bs) if (bd.anchor) { bd.x = bd.px = bd.anchor.x + AA_DX; bd.y = bd.py = bd.anchor.y + AA_DY; }
+    if (PEP.mode !== "fold") { PEP.rope.nodes = Bs; PEP.rope.step(); }
+    for (const bd of Bs) bd.g.setAttribute("transform", `translate(${bd.x.toFixed(1)},${bd.y.toFixed(1)})`);
+    PEP.bond.setAttribute("d", smoothPath(Bs));
+    if (TL.pendingBead) { const p = TL.pendingBead; p.x = p.anchor.x + AA_DX; p.y = p.anchor.y + AA_DY; p.g.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`); }
+  });
+}
+
+// ---------------------------------------------------------------------
+//  Panels
+// ---------------------------------------------------------------------
+function buildRibosomePanel() {
+  Panel.set("Cytoplasm · translation", "The mRNA is now in the cytoplasm, where ribosomes read it.");
+  Panel.section("Machines");
+  ST.cards = {};
+  ST.cards.ribo = Panel.card({ icon: ICON_RIBO, name: "Ribosome", sub: "Small + large subunit. Its P site must sit on the start codon.", tag: "drag", cls: "pulse",
+    drag: { ghost: () => makeRibosomeGhost(L.drag), drop: dropRibosome } });
+}
+function tRNAOptions() {
+  const seen = new Set(), opts = [];
+  for (const c of ORF) if (CODON[c] !== "*" && !seen.has(c)) { seen.add(c); opts.push({ codon: c, aa: CODON[c] }); }
+  for (const c of ["GCA", "UAU", "CCC", "GAG"]) if (!seen.has(c)) opts.push({ codon: c, aa: CODON[c] });
+  return opts.sort((p, q) => AA3[p.aa].localeCompare(AA3[q.aa]));
+}
+function buildTRNAPanel() {
+  return Panel.swap("Choose a tRNA", "Each tRNA carries one amino acid. Its anticodon (3′→5′) must base-pair with the codon in the ribosome.", "trna", () => {
+    Panel.section("Charged tRNAs");
+    for (const o of tRNAOptions()) {
+      const ac = anticodonOf(o.codon);
+      const el = Panel.card({ icon: iconTRNA(ac), name: "", onClick: () => pick({ kind: "trna", ...o, el }), cls: "tcard" });
+      el.querySelector(".meta").innerHTML = `<div class="ac"><small>3′</small>${b(ac)}<small>5′</small></div><div class="aa">${AA3[o.aa]} · ${AA_NAME[o.aa]}</div>`;
+    }
+    Panel.section("Other").classList.add("wide");
+    const rf = Panel.card({ icon: ICON_RF, name: "Release factor", sub: "Protein that recognises stop codons", onClick: () => pick({ kind: "rf", el: rf }), cls: "wide" });
+    Panel.button("Show codon table", showCodonTable, "");
+  });
+}
+function pick(o) { if (TL.busy || !TL.waiting) return; Sig.fire("pick", o); }
+
+// ---------------------------------------------------------------------
+//  Scene script
+// ---------------------------------------------------------------------
+async function startTranslation(skip = false) {
+  ST.phase = "translation"; setStep(6); zone("Cytoplasm");
+  load3Dmol();
+  if (skip) {
+    buildMatureDirect();
+    const N = RNA.nodes; Cam.cx = (N[0].x + N[N.length - 1].x) / 2; Cam.cy = LINE_Y - 60; Cam.w = (N.length + 12) * SP;
+  } else {
+    const N = RNA.nodes; await Cam.to({ x: (N[0].x + N[N.length - 1].x) / 2, y: LINE_Y - 60, w: (N.length + 12) * SP }, 1600);
+  }
+  setupPeptideLayer();
+  // codon reading-frame ticks
+  TL.codonHL = S("rect", { x: 0, y: LINE_Y - 37, width: 3 * SP, height: 30, rx: 6, fill: COL.gold, opacity: 0 }, L.back);
+  buildRibosomePanel();
+  say("The ribosome reads mRNA in 3-letter <b>codons</b>. It must start at the <b>start codon</b>. Find it, and <b>drag the ribosome so its P site sits on it</b>.");
+  await Sig.wait("ribo");
+  await translate();
+}
+
+async function dropRibosome(pt, ghost) {
+  if (TL.rib) { fade(ghost.g, 0, 300).then(() => ghost.g.remove()); return; }
+  L.prot.appendChild(ghost.g);
+  const ax = codonX(0), Y = LINE_Y;
+  if (Math.abs(pt.x - ax) < 50 && Math.abs(pt.y - Y) < 150) {
+    // split: small subunit clamps on, large waits
+    ghost.g.remove();
+    const sm = entity(S("g", {}, L.back)); drawSmall(sm.g);
+    const lg = entity(S("g", {}, L.front)); drawLarge(lg.g);
+    sm.x = lg.x = pt.x; sm.y = lg.y = pt.y; sm.render(); lg.render();
+    TL.rib = { sm, lg, px: ax };
+    ST.cards.ribo.classList.add("used", "disabled"); ST.cards.ribo.classList.remove("pulse");
+    await Promise.all([
+      tween(700, k => { sm.x = lerp(pt.x, ax, k); sm.y = lerp(pt.y, Y, k); sm.render(); }, ease.outBack),
+      tween(1100, k => { lg.x = lerp(pt.x, ax, k); lg.y = lerp(pt.y, Y - 380, k); lg.render(); lg.g.style.opacity = 1 - k * .85; }, ease.inOut),
+    ]);
+    Sig.fire("ribo");
+  } else {
+    const near = Math.abs(pt.y - Y) < 170;
+    let msg;
+    if (!near) msg = `<span class="hint">Drop the ribosome <b>onto the mRNA</b>.</span>`;
+    else {
+      const ci = Math.round((pt.x - codonX(0)) / (3 * SP));
+      const j = clamp(START + ci * 3, 0, MATURE.length - 3);
+      const cod = MATURE.slice(j, j + 3);
+      msg = `<span class="hint">No grip — ${cod.length === 3 ? `<b>${b(cod)}</b> isn’t` : "that isn’t"} the start codon. In cells the small subunit binds the 5′ cap and scans along to the first <b>${b("AUG")}</b>.</span>`;
+    }
+    await fallAway(ghost, msg);
+  }
+}
+
+function highlightCodon(c, show = true) {
+  const x = codonNode(c, 0).x - SP / 2;
+  TL.codonHL.setAttribute("x", x);
+  tween(400, k => TL.codonHL.setAttribute("opacity", show ? .3 * k : .3 * (1 - k)));
+}
+async function moveRibosome(toX, dur = 900) {
+  const r = TL.rib, x0 = r.px;
+  await tween(dur, k => { r.px = lerp(x0, toX, k); r.sm.x = r.px; r.lg.x = r.px; r.sm.render(); r.lg.render(); }, ease.inOut);
+}
+
+async function translate() {
+  const r = TL.rib, Y = LINE_Y;
+  await Cam.to({ x: r.px + SP * 1.5, y: Y - 150, w: 1150 }, 1600);
+  Cam.follow = () => ({ x: TL.rib.px + SP * 1.5, y: Y - 150 }); Cam.followRate = .06;
+  highlightCodon(0);
+  keep(label("start codon", codonX(0), Y + 112, { size: 15, color: COL.gold }));
+  await buildTRNAPanel();
+  say(`The small subunit has found <b>${b("AUG")}</b> in its <b>P site</b>. Pick the tRNA whose anticodon pairs with ${b("AUG")} — the <b>initiator tRNA</b>.`);
+  // initiation: tRNA into P site
+  const t0 = await pickFor(0, "P");
+  await clearLabels();
+  say("The <b>large subunit</b> now clamps on top, completing the ribosome.");
+  const lg = r.lg, ly = lg.y;
+  await tween(1200, k => { lg.y = lerp(ly, Y, k); lg.g.style.opacity = .15 + .85 * k; lg.render(); }, ease.outBack);
+  setStep(7);
+  TL.P = t0;
+  for (let c = 1; c < ORF.length; c++) {
+    highlightCodon(c);
+    const cod = codonOf(c);
+    if (CODON[cod] === "*") { await terminateTranslation(c); return; }
+    say(c === 1 ? `Next codon in the <b>A site</b>: <b class="mono">${b(cod)}</b>. Which tRNA matches?` : `A site: <b class="mono">${b(cod)}</b>`);
+    const t = await pickFor(c, "A");
+    await peptideBond(t, c);
+    await translocate(c);
+  }
+}
+
+// wait for a pick; animate wrong ones away; resolve with the docked tRNA
+async function pickFor(c, site) {
+  const cod = codonOf(c), Y = LINE_Y;
+  TL.misses = 0;
+  while (true) {
+    TL.waiting = true;
+    const o = await Sig.wait("pick");
+    TL.waiting = false; TL.busy = true;
+    const isStop = CODON[cod] === "*";
+    if (o.kind === "rf") {
+      const rf = makeRF(); rf.x = Cam.cx + Cam.w / 2 + 60; rf.y = Y - 200; rf.render();
+      if (isStop) { TL.busy = false; return rf; }
+      await fly({ x: rf.x, y: rf.y }, { x: codonX(c), y: Y - 26 }, 700, (x, y) => { rf.x = x; rf.y = y; rf.render(); });
+      say(`<span class="hint">Release factors only bind <b>stop codons</b> (UAA, UAG, UGA). ${b(cod)} codes for an amino acid — pick a tRNA.</span>`);
+      o.el.classList.add("shake"); setTimeout(() => o.el.classList.remove("shake"), 450);
+      await fly({ x: rf.x, y: rf.y }, { x: rf.x + 200, y: Y - 380 }, 800, (x, y, k) => { rf.x = x; rf.y = y; rf.render(); rf.g.style.opacity = 1 - k; });
+      rf.g.remove(); TL.busy = false; continue;
+    }
+    const t = makeTRNA(o.codon, o.aa);
+    const bead = makeBead(o.aa); bead.anchor = t; TL.pendingBead = bead;
+    t.x = Cam.cx + Cam.w / 2 + 60; t.y = Y - 260; t.r = 20; t.render();
+    const ok = !isStop && t.ac === anticodonOf(cod);
+    if (ok) {
+      await fly({ x: t.x, y: t.y }, { x: codonX(c), y: Y }, 900, (x, y, k) => { t.x = x; t.y = y; t.r = 20 * (1 - k); t.render(); }, { arc: -.2 });
+      t.boxes.forEach((bx, k) => flash(codonX(c) + (k - 1) * SP, Y - 31, 11, COL.green, 700));
+      if (site === "P") { PEP.beads.push(bead); TL.pendingBead = null; }
+      else { TL.A = t; TL.Abead = bead; }
+      TL.busy = false;
+      return t;
+    }
+    // wrong: hover, show mismatches, bounce away
+    TL.misses++; TL.totalMisses++;
+    await fly({ x: t.x, y: t.y }, { x: codonX(c), y: Y - 26 }, 750, (x, y, k) => { t.x = x; t.y = y; t.r = 20 * (1 - k); t.render(); }, { arc: -.2 });
+    const marks = [];
+    [...t.ac].forEach((ch, k) => {
+      const good = !isStop && PAIR_RNA[cod[k]] === ch;
+      t.boxes[k].setAttribute("stroke", good ? COL.green : COL.red); t.boxes[k].setAttribute("stroke-width", 3);
+      if (!good) { const m = S("text", { x: codonX(c) + (k - 1) * SP, y: Y - 80, "font-size": 20, "text-anchor": "middle", fill: COL.red, "font-weight": 700 }, L.label); m.textContent = "✗"; marks.push(m); }
+    });
+    o.el.classList.add("shake"); setTimeout(() => o.el.classList.remove("shake"), 450);
+    if (isStop) say(`<span class="hint">No tRNA pairs with <b>${b(cod)}</b> — it’s a <b>stop codon</b>! Something else must bind here…</span>`);
+    else if (TL.misses >= 2) say(`<span class="hint">Pair each base: ${b("A")}↔${b("U")}, ${b("G")}↔${b("C")}. Codon <b class="mono">${b(cod)}</b> needs anticodon <b class="mono">${b(anticodonOf(cod))}</b>.</span>`);
+    else say(`<span class="warn">Doesn’t pair.</span> The anticodon ${b(t.ac)} doesn’t match codon ${b(cod)} — watch the red ✗’s.`);
+    await wait(900);
+    t.g.style.transformOrigin = "center";
+    await tween(260, k => { t.x = codonX(c) + Math.sin(k * 20) * 6; t.render(); }, ease.linear);
+    marks.forEach(m => m.remove());
+    const sx = t.x, sy = t.y;
+    await tween(800, k => { t.x = sx + 220 * k; t.y = sy - 320 * k; t.r = 30 * k; t.render(); t.g.style.opacity = 1 - k; bead.g.style.opacity = 1 - k; }, ease.in);
+    t.g.remove(); bead.g.remove(); TL.pendingBead = null; TL.busy = false;
+  }
+}
+
+async function peptideBond(tA, c) {
+  const pB = PEP.beads[PEP.beads.length - 1], aB = TL.Abead, first = c === 1;
+  const line = S("line", { x1: pB.x, y1: pB.y, x2: aB.x, y2: aB.y, stroke: COL.rose, "stroke-width": 5, opacity: 0 }, L.label);
+  await tween(450, k => line.setAttribute("opacity", k));
+  if (first) say("A <b>peptide bond</b> forms: the growing chain is handed from the P-site tRNA onto the new amino acid in the A site.");
+  const lb = first ? label("peptide bond", TL.rib.px + 196, TL.rib.px ? LINE_Y - 214 : 0, { size: 16, color: COL.rose, anchor: "start", arrow: [TL.rib.px + 190, LINE_Y - 220, (pB.x + aB.x) / 2 + 6, (pB.y + aB.y) / 2 + 4] }) : null;
+  pB.anchor = null; pB.pin = false; aB.pin = true; PEP.beads.push(aB); TL.pendingBead = null;
+  await tween(450, k => line.setAttribute("opacity", 1 - k)); line.remove();
+  if (lb) { await wait(900); lb.remove(); }
+}
+
+async function translocate(c) {
+  const first = c === 1;
+  if (first) say("<b>Translocation:</b> the ribosome shuffles one codon along the mRNA. The empty tRNA moves to the <b>E site</b> and exits.");
+  await moveRibosome(codonX(c), first ? 1200 : 700);
+  const E = TL.P; TL.P = TL.A; TL.A = null;
+  const ex = E.x, ey = E.y;
+  tween(first ? 1300 : 900, k => { E.x = ex - 120 * k; E.y = ey - 260 * k; E.r = -30 * k; E.render(); E.g.style.opacity = 1 - k; }, ease.in).then(() => E.g.remove());
+  if (first) await wait(800);
+}
+
+async function terminateTranslation(c) {
+  setStep(8);
+  const cod = codonOf(c), Y = LINE_Y;
+  say(`<b class="mono">${b(cod)}</b> is a <b>stop codon</b> — no tRNA matches it. What binds here instead?`);
+  const rf = await pickFor(c, "A");
+  await fly({ x: rf.x, y: rf.y }, { x: codonX(c), y: Y }, 900, (x, y) => { rf.x = x; rf.y = y; rf.render(); }, { arc: -.2 });
+  flash(codonX(c), Y - 30, 20, COL.gold, 800);
+  say("The <b>release factor</b> binds the stop codon and adds water, cutting the finished chain free from the last tRNA.");
+  const w = label("H₂O", codonX(c) + 130, Y - 205, { size: 20, color: COL.blue, anchor: "start", arrow: [codonX(c) + 124, Y - 212, codonX(c) - 3 * SP - 2, Y - 276] });
+  await wait(1200); w.remove();
+  const last = PEP.beads[PEP.beads.length - 1]; last.anchor = null; last.pin = false;
+  PEP.mode = "free";
+  Cam.follow = null;
+  // everything comes apart
+  const r = TL.rib, P = TL.P, sy = r.sm.y, ly = r.lg.y, px = P.x, py = P.y, rx = rf.x, ry = rf.y;
+  say("Translation is over: the polypeptide drifts away, the tRNA and release factor leave, and the ribosome splits into its subunits.");
+  await Promise.all([
+    tween(2400, k => { r.lg.y = ly - 500 * k; r.lg.x = r.px + 250 * k; r.lg.render(); r.lg.g.style.opacity = 1 - k; }, ease.in),
+    tween(2400, k => { r.sm.y = sy + 400 * k; r.sm.render(); r.sm.g.style.opacity = 1 - k; }, ease.in),
+    tween(1800, k => { P.y = py - 250 * k; P.x = px - 150 * k; P.render(); P.g.style.opacity = 1 - k; rf.y = ry - 200 * k; rf.x = rx + 200 * k; rf.render(); rf.g.style.opacity = 1 - k; }, ease.in),
+    tween(2600, () => {}),
+  ]);
+  TL.codonHL.remove();
+  await fold();
+}
+
+async function fold() {
+  setStep(9);
+  const Bs = PEP.beads, n = Bs.length;
+  const cx = Bs.reduce((s, q) => s + q.x, 0) / n, cy = Bs.reduce((s, q) => s + q.y, 0) / n;
+  await Promise.all([Cam.to({ x: cx, y: cy, w: 700 }, 1500), fade(L.rna, .15, 1500), fade(L.back, .15, 1500)]);
+  say("Now the chain <b>folds</b>: hydrophobic side chains (orange) tuck inside, away from water, and the chain collapses into a compact 3D shape.");
+  PEP.mode = "fold";
+  // compact target: hexagonal cluster, hydrophobics in the middle
+  const hex = [[0, 0], [1, 0], [.5, .866], [-.5, .866], [-1, 0], [-.5, -.866], [.5, -.866], [1.5, .866], [0, 1.732], [-1.5, .866], [-1.5, -.866], [0, -1.732]];
+  const order = Bs.map((q, i) => i).sort((i, j) => ("AVLIMFWP".includes(Bs[j].aa) ? 1 : 0) - ("AVLIMFWP".includes(Bs[i].aa) ? 1 : 0));
+  const slot = []; order.forEach((bi, k) => (slot[bi] = hex[k]));
+  const s0 = Bs.map(q => ({ x: q.x, y: q.y }));
+  await tween(2600, k => {
+    Bs.forEach((q, i) => { const tx = cx + slot[i][0] * 32, ty = cy + slot[i][1] * 32; const w = Math.sin(k * Math.PI) * 30 * Math.sin(i * 1.7); q.x = lerp(s0[i].x, tx, k) + w; q.y = lerp(s0[i].y, ty, k) + w * .5; });
+  }, ease.inOut);
+  const glow = S("circle", { cx, cy, r: 80, fill: COL.gold, opacity: 0, filter: "url(#softglow)" }, L.back);
+  L.back.style.opacity = 1;
+  await tween(700, k => glow.setAttribute("opacity", .35 * k));
+  await wait(600);
+  showFinale();
+}
+
+// ---------------------------------------------------------------------
+//  Finale: 3D structure + confetti
+// ---------------------------------------------------------------------
+let molLoad = null;
+function load3Dmol() {
+  if (molLoad) return molLoad;
+  molLoad = new Promise((res, rej) => {
+    if (window.$3Dmol) return res();
+    const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.4.0/3Dmol-min.js";
+    s.onload = () => res(); s.onerror = rej; document.head.appendChild(s);
+  });
+  molLoad.catch(() => {});
+  return molLoad;
+}
+async function showFinale() {
+  const seq = PEP.beads.map(q => AA3[q.aa]).join("–");
+  $("#finaleSeq").textContent = "H₂N– " + seq + " –COOH";
+  const praise = TL.totalMisses === 0 ? "Flawless — every tRNA on the first try! 🧬" : TL.totalMisses < 4 ? "Great work — you decoded the whole gene!" : "You got there — every mistake taught you a base pair!";
+  $("#finalePraise").innerHTML = `<b>${praise}</b>`;
+  $("#finale").classList.add("show");
+  Panel.swap("Done!", "Press Reset (top right) or Play again to run the lesson from the start.", "", () => {
+    Panel.section("Your protein");
+    PEP.beads.forEach((q, i) => Panel.card({ icon: `<circle r="18" fill="${AA_COLOR(q.aa)}"/><text y="5" font-size="13" font-weight="700" text-anchor="middle" fill="${AA_INK(q.aa)}">${AA3[q.aa]}</text>`,
+      name: `${i + 1}. ${AA_NAME[q.aa]}`, sub: `codon ${ORF[i]}` }));
+  });
+  $("#caption").classList.add("hide");
+  FX.burst(240); setTimeout(() => FX.burst(160), 700);
+  const box = $("#protein3d");
+  try {
+    await Promise.race([load3Dmol(), new Promise((_, r) => setTimeout(r, 8000))]);
+    const txt = await (await fetch("https://files.rcsb.org/download/1L2Y.pdb")).text();
+    const model1 = txt.split("ENDMDL")[0];
+    box.innerHTML = "";
+    const v = $3Dmol.createViewer(box, { backgroundColor: "#ffffff" });
+    v.addModel(model1, "pdb");
+    v.setStyle({}, { cartoon: { color: "spectrum", thickness: .6 } });
+    v.addStyle({ resn: ["TRP", "TYR", "PRO", "LEU", "ILE"] }, { stick: { radius: .18, colorscheme: "orangeCarbon" } });
+    v.zoomTo(); v.render(); v.zoom(.9); v.spin("y", .6);
+  } catch (e) {
+    box.querySelector(".fallback").innerHTML = "Couldn’t load the 3D structure (offline?).<br>The folded chain in the background shows the idea: hydrophobic residues packed in the core.";
+  }
+}
+// =====================================================================
+//  BOOT
+// =====================================================================
+$("#speed").addEventListener("change", (e) => { Anim.speed = +e.target.value; });
+$("#btnReset").onclick = () => { location.hash = ""; location.reload(); };
+$("#btnSkip").onclick = () => { location.hash = "translation"; location.reload(); };
+$("#btnAgain").onclick = () => { location.hash = ""; location.reload(); };
+$("#btnCode").onclick = showCodonTable;
+$("#modalClose").onclick = closeModal;
+$("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+new ResizeObserver(resize).observe(stage);
+resize();
+buildTracker();
+requestAnimationFrame(loop);
+if (location.hash === "#translation") { $("#start").classList.add("hide"); startTranslation(true); }
+else $("#btnStart").onclick = () => { $("#start").classList.add("hide"); setTimeout(runTranscription, 400); };
+
+// hooks for automated testing / teacher shortcuts (open the console: __debug.fillNTPs())
+window.__debug = {
+  ST, TL, RNA, PEP, Cam, Anim, toScreen, codonX, xOf,
+  fillNTPs(n = 30) { for (const l of "AUGC") addNTP(l, n); },
+};
+</script>
+</body>
+</html>
